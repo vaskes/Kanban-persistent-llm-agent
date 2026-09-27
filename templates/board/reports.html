@@ -1,11 +1,16 @@
 <!doctype html><html><head><meta charset="utf-8"><title>reports</title>
 <style>body{font:14px system-ui;background:#111;color:#eee;padding:20px}
-table{border-collapse:collapse}td,th{padding:6px 14px;border:1px solid #333}
-a{color:#7cc4ff}</style></head><body>
+table{border-collapse:collapse;margin-bottom:18px}td,th{padding:5px 14px;border:1px solid #333;text-align:left}
+a{color:#7cc4ff}h3{color:#9a9;margin-bottom:6px}</style></head><body>
 <p><a href="/">← board</a></p><h1>reports</h1>
 <h3>by status</h3><table><tr><th>status</th><th>n</th></tr>
 {% for r in by_status %}<tr><td>{{ r.status }}</td><td>{{ r.n }}</td></tr>{% endfor %}</table>
+<h3>by kind</h3><table><tr><th>kind</th><th>n</th></tr>
+{% for r in by_kind %}<tr><td>{{ r.kind }}</td><td>{{ r.n }}</td></tr>{% endfor %}</table>
 <h3>events by actor</h3><table><tr><th>actor</th><th>n</th></tr>
 {% for r in by_actor %}<tr><td>{{ r.actor }}</td><td>{{ r.n }}</td></tr>{% endfor %}</table>
-<h3>tokens</h3><p>{{ total_tokens }}</p>
+<h3>burn</h3><p>tokens: {{ total_tokens }} · attempts: {{ total_attempts }}</p>
+<h3>stuck cards</h3><table><tr><th>title</th><th>score</th></tr>
+{% for s in stuck %}<tr><td><a href="/task/{{ s.id }}/">{{ s.title|truncatechars:50 }}</a></td><td>{{ s.stuck_score|floatformat:0 }}</td></tr>
+{% empty %}<tr><td colspan="2">—</td></tr>{% endfor %}</table>
 </body></html>

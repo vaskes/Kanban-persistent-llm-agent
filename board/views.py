@@ -38,7 +38,7 @@ def task_detail(request, task_id):
 
 
 def reports(request):
-    from .models import Actor
+    from .models import TaskEvent
 
     return render(
         request,
@@ -48,10 +48,21 @@ def reports(request):
                 Task.objects.values("status").annotate(n=Count("id")).order_by("-n")
             ),
             "by_actor": list(
-                Task.events.values("actor").annotate(n=Count("id")).order_by("-n")
+                TaskEvent.objects.values("actor").annotate(n=Count("id")).order_by("-n")
+            ),
+            "by_kind": list(
+                Task.objects.values("kind").annotate(n=Count("id")).order_by("-n")
             ),
             "total_tokens": sum(
                 Task.objects.values_list("tokens_used", flat=True)
+            ),
+            "total_attempts": sum(
+                Task.objects.values_list("attempts", flat=True)
+            ),
+            "stuck": list(
+                Task.objects.filter(stuck_score__gt=0)
+                .order_by("-stuck_score")
+                .values("id", "title", "stuck_score")[:20]
             ),
         },
     )
