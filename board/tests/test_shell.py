@@ -155,3 +155,48 @@ def test_unblock_ready_survives_a_failing_transition(monkeypatch):
     other.refresh_from_db()
     assert blocked.status == Status.BLOCKED
     assert other.status == Status.READY
+
+
+# --------------------------------------------------------------------------
+# licensing invariants
+# --------------------------------------------------------------------------
+
+
+def test_license_states_no_free_use():
+    """
+    The whole point of the licence is that public visibility confers nothing.
+    If someone edits that sentence away, the repository is quietly a free
+    project. This fails loudly instead.
+    """
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[2] / "LICENSE").read_text()
+    assert "Copyright (c) 2026 Kuduza Ai Lab" in text
+    assert "NO FREE USE IS GRANTED" in text
+    assert "not an open-source license" in text.lower()
+
+
+def test_license_reserves_third_party_material():
+    """
+    The rights holder grants nothing over anyone else's code. If third-party
+    material were ever covered by the proprietary grant, that would be a
+    licence violation by the project itself.
+    """
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[2] / "LICENSE").read_text()
+    assert "THIRD-PARTY MATERIAL" in text
+    assert "grants You NO right, license, permission" in text
+    assert "the third-party licence prevails" in text
+    # the definition must be referenced from the definitions section
+    assert 'has the meaning given in Section 10.2' in text
+
+
+def test_notice_states_authorship_and_provenance():
+    from pathlib import Path
+
+    text = (Path(__file__).resolve().parents[2] / "NOTICE").read_text()
+    assert "Mavis Agent (MiniMax M3.1 powered)" in text
+    assert "under the supervision and direction" in text
+    assert "Kuduza Ai Lab" in text
+    assert "NOT to grant free use" in text

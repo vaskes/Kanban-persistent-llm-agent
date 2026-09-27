@@ -39,12 +39,27 @@ LICENSE governs.
 Questions about permission: https://kuduza.com
 
 =============================================================================
-THIRD-PARTY COMPONENTS
+THIRD-PARTY MATERIAL
 =============================================================================
 
-This project depends on third-party open-source libraries, each under its own
-license as recorded in requirements.txt and the dependency metadata. Those
-licenses govern those components and are unaffected by this NOTICE.
+The Software may contain Third-Party Material — text, code, data, models,
+documentation, assets, or derivative works originating from parties other than
+Kuduza Ai Lab. The presence of such material is neither a defect nor a licence
+grant.
 
-The list is not exhaustive of every possible transitive dependency; the
-authoritative record is the dependency tree at the time of a given commit.
+Third-Party Material remains the property of its respective owners and
+licensors. Kuduza Ai Lab claims no title to it and grants no permission in
+respect of it. Use of any such part requires the permission of its actual
+owner, obtained directly from that party. The terms published by that party
+govern it, and nothing in this NOTICE or in LICENSE grants, reduces, replaces,
+or overrides them.
+
+The proprietary terms in this project therefore cover only what Kuduza Ai Lab
+owns. Anything that belongs to someone else belongs to someone else.
+
+The authoritative record of third-party components is the dependency tree at
+the time of a given commit (see requirements.txt). That list is not exhaustive
+of every transitive dependency.
+
+Where a third-party licence requires its copyright or attribution notices to be
+preserved, they must be kept intact.

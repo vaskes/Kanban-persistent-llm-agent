@@ -15,6 +15,11 @@ schematics, test suites, and all associated contents in this repository
 
 "Licensor" means the copyright holder named above.
 
+"Third-Party Material" has the meaning given in Section 10.2. Where Third-Party
+Material is present in the Software, the rights asserted in this agreement apply
+to it only to the extent it is owned by the Licensor, and not at all to the
+extent it is owned by anyone else.
+
 "You" means any individual or legal entity.
 
 =============================================================================
@@ -141,7 +146,61 @@ regard to conflict-of-law provisions. The Licensor's home jurisdiction courts
 have exclusive jurisdiction over any dispute arising from this agreement.
 
 =============================================================================
-10. CONTACTS
+10. THIRD-PARTY MATERIAL
+=============================================================================
+
+10.1 SCOPE OF OWNERSHIP. The rights asserted in this agreement extend ONLY to
+     material owned by the Licensor. They do not extend, and must not be read
+     to extend, to any Third-Party Material.
+
+10.2 THIRD-PARTY MATERIAL DEFINITION. "Third-Party Material" means any portion
+     of the Software, or of anything distributed with it, that is or contains
+     text, code, data, models, documentation, fonts, assets, or any derivative
+     work originating from a party other than the Licensor — including without
+     limitation third-party libraries, packages, headers, snippets, vendored
+     sources, sample code, and generated artifacts.
+
+10.3 THE SOFTWARE MAY CONTAIN SUCH MATERIAL. The Licensor does not represent
+     that the Software is free of Third-Party Material, and does not warrant
+     that it is not. The presence of Third-Party Material is neither a defect
+     nor a licence grant.
+
+10.4 OWNERSHIP OF THIRD-PARTY MATERIAL. Third-Party Material remains the
+     property of its respective owners and licensors. The Licensor claims no
+     title to it, and this agreement conveys none.
+
+10.5 NO GRANT OVER THIRD-PARTY MATERIAL. The grant in Section 2 does NOT
+     apply to Third-Party Material. The Licensor grants You NO right, license,
+     permission, or authority of any kind in respect of Third-Party Material,
+     and no such right may be inferred from the Licensor's possession of it,
+     from its inclusion in the Software, or from this agreement.
+
+10.6 THIRD-PARTY LICENCES GOVERN. Third-Party Material is governed solely by
+     its own licence terms as published by its owner. Where those terms permit
+     use, those terms — and only those terms — permit it, and their conditions
+     and limitations apply in full. Nothing in this agreement grants, reduces,
+     replaces, supplements, or overrides any third-party licence.
+
+10.7 PERMISSION MUST COME FROM THE OWNER. Use of Third-Party Material requires
+     the permission of its actual owner or licensor, obtained directly from
+     that party. No permission of the Licensor is required for it, and none is
+     given by this agreement. Where the two could be read differently, the
+     third-party licence prevails.
+
+10.8 NO ENDORSEMENT. Inclusion of Third-Party Material is not an endorsement of,
+     affiliation with, or sponsorship by the Licensor, and does not imply that
+     the Licensor has reviewed, approved, or verified any such material.
+
+10.9 RESPONSIBILITY. The Licensor is not responsible for Third-Party Material
+     and makes no warranty of any kind regarding it, including as to
+     correctness, security, fitness for any purpose, or freedom from claims.
+
+10.10 ATTRIBUTION PRESERVED. Where a third-party licence requires preservation
+     of copyright, attribution, or licence notices, those notices are to be
+     kept intact. Removing or obscuring them is prohibited by Section 3.6.
+
+=============================================================================
+11. CONTACTS
 =============================================================================
 
 Licensor:      Kuduza Ai Lab — https://kuduza.com
