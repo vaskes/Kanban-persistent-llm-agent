@@ -170,7 +170,7 @@ def test_license_states_no_free_use():
     """
     from pathlib import Path
 
-    text = (Path(__file__).resolve().parents[2] / "LICENSE").read_text()
+    text = " ".join((Path(__file__).resolve().parents[2] / "LICENSE").read_text().split())
     assert "Copyright (c) 2026 Kuduza Ai Lab" in text
     assert "NO FREE USE IS GRANTED" in text
     assert "not an open-source license" in text.lower()
@@ -181,21 +181,26 @@ def test_license_reserves_third_party_material():
     The rights holder grants nothing over anyone else's code. If third-party
     material were ever covered by the proprietary grant, that would be a
     licence violation by the project itself.
+
+    Whitespace is normalised first: the licence is hard-wrapped for
+    readability, so a clause can legitimately break across lines without its
+    wording having changed.
     """
     from pathlib import Path
 
     text = (Path(__file__).resolve().parents[2] / "LICENSE").read_text()
-    assert "THIRD-PARTY MATERIAL" in text
-    assert "grants You NO right, license, permission" in text
-    assert "the third-party licence prevails" in text
+    flat = " ".join(text.split())
+    assert "THIRD-PARTY MATERIAL" in flat
+    assert "grants You NO right, license, permission" in flat
+    assert "the third-party licence prevails" in flat
     # the definition must be referenced from the definitions section
-    assert 'has the meaning given in Section 10.2' in text
+    assert "has the meaning given in Section 10.2" in flat
 
 
 def test_notice_states_authorship_and_provenance():
     from pathlib import Path
 
-    text = (Path(__file__).resolve().parents[2] / "NOTICE").read_text()
+    text = " ".join((Path(__file__).resolve().parents[2] / "NOTICE").read_text().split())
     assert "Mavis Agent (MiniMax M3.1 powered)" in text
     assert "under the supervision and direction" in text
     assert "Kuduza Ai Lab" in text
