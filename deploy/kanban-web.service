@@ -9,9 +9,12 @@ User=git
 WorkingDirectory=/opt/mavis-agent/kanban-agent
 EnvironmentFile=/opt/mavis-agent/kanban-agent/.env
 ExecStart=/opt/mavis-agent/kanban-agent/.venv/bin/gunicorn core.wsgi:application \
-    --bind 127.0.0.1:8901 --workers 3 --timeout 60
+    --bind ${BIND_ADDR} --workers 3 --timeout 60
 Restart=always
 RestartSec=5
+
+# loopback only by default; set BIND_ADDR=192.168.10.7:8901 to reach it from
+# the LAN. Do NOT use 0.0.0.0 — that exposes the board on every interface.
 
 [Install]
 WantedBy=multi-user.target
