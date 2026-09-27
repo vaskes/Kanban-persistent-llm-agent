@@ -1,0 +1,9 @@
+{% extends "board/base.html" %}
+{% block title %}{{ title|default:"Not allowed" }} — kanban-agent{% endblock %}
+{% block content %}
+<div class="empty-state">
+  <h2>{{ title|default:"Not allowed" }}</h2>
+  <p>{{ detail }}</p>
+  <p style="margin-top:20px"><a class="btn" href="/projects/">Back to projects</a></p>
+</div>
+{% endblock %}

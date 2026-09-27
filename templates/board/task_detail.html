@@ -1,15 +1,50 @@
-<!doctype html><html><head><meta charset="utf-8"><title>{{ task.title }}</title>
-<style>body{font:14px system-ui;background:#111;color:#eee;padding:20px}
-pre{background:#1a1a20;padding:10px;border-radius:4px;overflow:auto}
-a{color:#7cc4ff}</style></head><body>
-<p><a href="/">← board</a></p>
+{% extends "board/base.html" %}
+{% block title %}{{ task.title|truncatechars:50 }} — kanban-agent{% endblock %}
+{% block content %}
+<p class="muted"><a href="/">← board</a>{% if task.project %} ·
+  <a href="{% url 'project_detail' task.project.key %}">{{ task.project.name }}</a>{% endif %}</p>
+
 <h1>{{ task.title }}</h1>
-<p><b>{{ task.status }}</b> · kind {{ task.kind }} · prio {{ task.priority }} · autonomy {{ task.autonomy }}</p>
-<h3>goal</h3><pre>{{ task.goal }}</pre>
-<h3>acceptance</h3><pre>{{ task.acceptance }}</pre>
-<h3>evidence</h3><pre>{{ task.evidence }}</pre>
-<h3>step</h3><pre>{{ task.current_step }}</pre>
-<h3>events ({{ events|length }})</h3>
-<pre>{% for e in events %}{{ e.ts }} {{ e.actor }}/{{ e.event }} {{ e.from_status }}→{{ e.to_status }} {{ e.payload }}
-{% endfor %}</pre>
-</body></html>
+<p>
+  <span class="tag">{{ task.status }}</span>
+  <span class="tag">{{ task.kind }}</span>
+  <span class="tag">priority {{ task.priority }}</span>
+  <span class="tag">{{ task.autonomy }}</span>
+  {% if task.assignee %}<span class="tag">@{{ task.assignee.name }}</span>
+  {% else %}<span class="tag">any agent</span>{% endif %}
+</p>
+{% if task.stuck_score > 0 %}<p><span class="tag warn">stuck score {{ task.stuck_score|floatformat:0 }}</span></p>{% endif %}
+{% if task.needs_human %}<div class="msg err">{{ task.attention_reason|default:"Needs a human." }}</div>{% endif %}
+
+{% if task.goal %}<h2>Goal</h2><div class="card">{{ task.goal|linebreaksbr }}</div>{% endif %}
+{% if task.acceptance %}<h2>Acceptance criteria</h2><div class="card">{{ task.acceptance|linebreaksbr }}</div>{% endif %}
+{% if task.evidence %}<h2>Evidence</h2><div class="card"><pre style="margin:0;white-space:pre-wrap;font-size:12.5px">{{ task.evidence }}</pre></div>{% endif %}
+{% if task.current_step %}<h2>Current step</h2><div class="card">{{ task.current_step }}</div>{% endif %}
+
+<h2>Execution</h2>
+<table>
+  <tr><th style="width:220px">Attempts</th><td>{{ task.attempts }} of {{ task.max_attempts }}</td></tr>
+  <tr><th>Tokens used</th><td>{{ task.tokens_used }} of {{ task.max_tokens }}</td></tr>
+  <tr><th>Claimed by</th><td>{{ task.claimed_by|default:"—" }}</td></tr>
+  <tr><th>Lease expires</th><td>{{ task.lease_expires_at|default:"—" }}</td></tr>
+  <tr><th>Dependencies</th>
+    <td>{% for d in task.dependencies.all %}
+          {{ d.depends_on.title|truncatechars:36 }}
+          {% if d.depends_on.status != 'DONE' %}<span class="tag warn">{{ d.depends_on.status }}</span>{% endif %}
+        {% empty %}none{% endfor %}</td></tr>
+</table>
+
+<h2>Audit trail ({{ events|length }})</h2>
+<div class="card" style="padding:12px 16px">
+{% for e in events %}
+  <div style="padding:5px 0;border-bottom:1px solid #1e2026;font-size:12.5px">
+    <span style="color:#71747d">{{ e.ts|date:"H:i:s" }}</span>
+    <b>{{ e.actor }}</b> / {{ e.event }}
+    {% if e.from_status %}<span style="color:#8b8d94">{{ e.from_status }} → {{ e.to_status }}</span>{% endif %}
+    {% if e.payload.reason %}<span style="color:#8b8d94">— {{ e.payload.reason }}</span>{% endif %}
+  </div>
+{% empty %}
+  <span class="muted">Nothing recorded yet.</span>
+{% endfor %}
+</div>
+{% endblock %}

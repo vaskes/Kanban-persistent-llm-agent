@@ -1,0 +1,52 @@
+{% extends "board/base.html" %}
+{% block title %}Projects — kanban-agent{% endblock %}
+{% block content %}
+<h1>Projects</h1>
+<p class="muted">A project groups work. Only an administrator can create one; access is granted per person.</p>
+
+{% if may_create %}
+  <p><a class="btn primary" href="{% url 'project_create' %}">New project</a></p>
+{% endif %}
+
+{% if rows %}
+<div class="card" style="padding:0">
+<table>
+  <tr><th>Project</th><th>Tasks</th><th>Members</th><th>Your access</th><th></th></tr>
+  {% for r in rows %}
+  <tr>
+    <td>
+      <a href="{% url 'project_detail' r.project.key %}"><b>{{ r.project.name }}</b></a>
+      <div class="help"><code>{{ r.project.key }}</code>
+        {% if r.project.is_default %} <span class="tag">default</span>{% endif %}
+        {% if r.project.archived %} <span class="tag warn">archived</span>{% endif %}
+        {% if r.project.repo_url %}
+          · <a href="{{ r.project.repo_url }}" target="_blank" rel="noopener">repo</a>{% endif %}
+      </div>
+    </td>
+    <td>{{ r.task_count }}</td>
+    <td>{{ r.member_count }}</td>
+    <td>
+      {% if r.can_write %}<span class="tag ok">write</span>
+      {% else %}<span class="tag">read</span>{% endif %}
+    </td>
+    <td style="text-align:right;white-space:nowrap">
+      {% if r.can_write %}
+        <a class="btn sm" href="{% url 'project_edit' r.project.key %}">Edit</a>
+      {% endif %}
+      {% if may_create %}
+        <a class="btn sm" href="{% url 'project_members' r.project.key %}">Members</a>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+</div>
+{% else %}
+<div class="empty-state">
+  <h2>No projects yet</h2>
+  <p>Your account has not been given access to any project.</p>
+  <p>An administrator has to grant you read access to at least one before
+     anything appears here.</p>
+</div>
+{% endif %}
+{% endblock %}

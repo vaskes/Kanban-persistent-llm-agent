@@ -1,0 +1,64 @@
+{% extends "board/base.html" %}
+{% block title %}Access — {{ project.name }}{% endblock %}
+{% block content %}
+<h1>Who can see {{ project.name }}</h1>
+<p class="muted">
+  <a href="{% url 'project_detail' project.key %}">← back to the project</a><br>
+  No row means no access at all. Read lets a person see the project and its
+  tasks; write also lets them change them.
+</p>
+
+<div class="card" style="max-width:620px">
+  <h2 style="margin-top:0">Current access</h2>
+  <table>
+    <tr><th>Person</th><th>Level</th><th>Granted by</th><th></th></tr>
+    {% if project.created_by %}
+    <tr><td>{{ project.created_by.username }}</td><td><span class="tag ok">write</span></td>
+        <td class="muted">creator</td><td></td></tr>
+    {% endif %}
+    {% for m in members %}
+    <tr>
+      <td>{{ m.user.username }}{% if m.user.username == request.user.username %} <span class="tag">you</span>{% endif %}</td>
+      <td>{% if m.can_write %}<span class="tag ok">write</span>{% else %}<span class="tag">read</span>{% endif %}</td>
+      <td class="muted">{{ m.granted_by.username|default:"—" }}</td>
+      <td style="text-align:right;white-space:nowrap">
+        <form class="inline" method="post" action="{% url 'member_toggle' project.key m.user_id %}">
+          {% csrf_token %}<button class="btn sm">Make {% if m.can_write %}read{% else %}write{% endif %}</button>
+        </form>
+        <form class="inline" method="post" action="{% url 'member_revoke' project.key m.user_id %}"
+              onsubmit="return confirm('Remove {{ m.user.username }}?')">
+          {% csrf_token %}<button class="btn sm danger">Revoke</button>
+        </form>
+      </td>
+    </tr>
+    {% empty %}
+      {% if not project.created_by %}
+      <tr><td colspan="4" class="muted">Nobody has been granted access.</td></tr>
+      {% endif %}
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card" style="max-width:620px">
+  <h2 style="margin-top:0">Grant access</h2>
+  <form method="post">
+    {% csrf_token %}
+    {# non-field errors carry the "already has access" case, which is the most #}
+    {# likely thing to go wrong here and was previously invisible #}
+    {% if form.non_field_errors %}<div class="msg err">{{ form.non_field_errors }}</div>{% endif %}
+    <label for="id_user">User</label>
+    {{ form.user }}
+    {% if form.user.help_text %}<p class="help">{{ form.user.help_text }}</p>{% endif %}
+    {% for e in form.user.errors %}<p class="errs">{{ e }}</p>{% endfor %}
+    <label for="id_can_write" style="margin-top:16px">
+      <input type="checkbox" name="can_write" id="id_can_write" style="width:auto;margin-right:8px">
+      Can write
+    </label>
+    <p class="help">{{ form.can_write.help_text }}</p>
+    <p style="margin-top:20px">
+      <button class="btn primary" type="submit">Grant access</button>
+      <a class="btn" href="{% url 'project_detail' project.key %}">Cancel</a>
+    </p>
+  </form>
+</div>
+{% endblock %}

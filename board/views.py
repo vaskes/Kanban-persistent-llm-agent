@@ -6,7 +6,8 @@ from django.contrib.auth.decorators import login_required
 from django.db.models import Count
 from django.shortcuts import get_object_or_404, redirect, render
 
-from .models import Status, Task
+from . import permissions
+from .models import Project, ProjectMembership, Status, Task
 
 # Every board view requires a session. There is no registration: accounts are
 # created by the operator, and only on this host. /healthz is the sole
@@ -23,9 +24,8 @@ def board(request):
     banner sitting above a list of everyone else's work, which is what this
     used to render.
     """
-    from .permissions import tasks_visible_to, visible_projects
 
-    visible = tasks_visible_to(request.user)
+    visible = permissions.tasks_visible_to(request.user)
     counts = {
         row["status"]: row["n"]
         for row in visible.values("status").annotate(n=Count("id"))
@@ -49,7 +49,7 @@ def board(request):
             "columns": columns,
             # "No access yet" and "an empty board" look identical otherwise,
             # and the operator would have to guess which one they are looking at.
-            "empty": not visible_projects(request.user).exists(),
+            "empty": not permissions.visible_projects(request.user).exists(),
         },
     )
 
@@ -62,9 +62,8 @@ def task_detail(request, task_id):
     Any authenticated user could previously read any card by guessing its id,
     including the goal, the acceptance criteria and the full audit trail.
     """
-    from .permissions import tasks_visible_to
 
-    task = get_object_or_404(tasks_visible_to(request.user), pk=task_id)
+    task = get_object_or_404(permissions.tasks_visible_to(request.user), pk=task_id)
     return render(
         request,
         "board/task_detail.html",
@@ -75,9 +74,8 @@ def task_detail(request, task_id):
 @login_required
 def reports(request):
     from .models import TaskEvent
-    from .permissions import tasks_visible_to
 
-    visible = tasks_visible_to(request.user)
+    visible = permissions.tasks_visible_to(request.user)
     # events follow their tasks: an event about an invisible card is itself
     # information about a card the reader is not allowed to see
     visible_ids = visible.values_list("id", flat=True)
@@ -143,4 +141,291 @@ def register(request):
         request,
         "board/register.html",
         {"form": form, "sess_sees_nothing": new_user_sees_nothing},
+    )
+
+
+# ---------------------------------------------------------------------------
+# projects
+# ---------------------------------------------------------------------------
+
+
+def _projects_context(request):
+
+    return {"may_create": permissions.user_may_create_projects(request.user)}
+
+
+@login_required
+def projects_list(request):
+
+    visible = permissions.visible_projects(request.user).select_related("created_by")
+    rows = []
+    for p in visible:
+        rows.append(
+            {
+                "project": p,
+                "task_count": p.tasks.count(),
+                "member_count": p.memberships.count(),
+                "can_write": permissions.user_can_write_project(request.user, p),
+                "backlogs": p.backlogs.all(),
+            }
+        )
+    return render(
+        request,
+        "board/projects.html",
+        {"rows": rows, **_projects_context(request)},
+    )
+
+
+@login_required
+def project_create(request):
+
+    if not permissions.user_may_create_projects(request.user):
+        # Creating projects is an administrator action by design. A 403 with a
+        # page beats a hidden button that leaves people wondering.
+        return render(
+            request,
+            "board/refused.html",
+            {
+                "title": "Not allowed",
+                "detail": "Only an administrator can create projects. "
+                          "Ask one to make you an administrator, or ask for "
+                          "access to an existing project.",
+            },
+            status=403,
+        )
+
+    from .project_forms import ProjectForm
+
+    form = ProjectForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        project = form.save(commit=False)
+        project.key = _slugify(project.name)
+        base, n = project.key, 2
+        while Project.objects.filter(key=project.key).exists():
+            project.key = f"{base}-{n}"
+            n += 1
+        project.created_by = request.user
+        project.save()
+        _ensure_backlog(project)
+        messages.success(request, f"Project '{project.name}' created.")
+        return redirect("project_detail", key=project.key)
+
+    return render(
+        request,
+        "board/project_form.html",
+        {"form": form, "mode": "create", **_projects_context(request)},
+    )
+
+
+@login_required
+def project_detail(request, key):
+
+    project = _visible_project(request.user, key)
+    if project is None:
+        return _no_access(request, key)
+
+    can_write = permissions.user_can_write_project(request.user, project)
+    return render(
+        request,
+        "board/project_detail.html",
+        {
+            "project": project,
+            "backlogs": project.backlogs.all(),
+            "members": project.memberships.select_related("user"),
+            "can_write": can_write,
+            "can_manage": permissions.user_may_create_projects(request.user),
+            "tasks": project.tasks.order_by("-priority", "created_at")[:100],
+            "task_count": project.tasks.count(),
+            **_projects_context(request),
+        },
+    )
+
+
+@login_required
+def project_edit(request, key):
+
+    project = _visible_project(request.user, key)
+    if project is None:
+        return _no_access(request, key)
+    if not permissions.user_can_write_project(request.user, project):
+        return _no_write(request, project)
+
+    from .project_forms import ProjectForm
+
+    form = ProjectForm(request.POST or None, instance=project)
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        messages.success(request, "Project saved.")
+        return redirect("project_detail", key=project.key)
+
+    return render(
+        request,
+        "board/project_form.html",
+        {
+            "form": form,
+            "mode": "edit",
+            "project": project,
+            **_projects_context(request),
+        },
+    )
+
+
+@login_required
+def project_delete(request, key):
+
+    project = _visible_project(request.user, key)
+    if project is None:
+        return _no_access(request, key)
+    if not permissions.user_may_create_projects(request.user):
+        return _no_write(request, project)
+
+    if request.method != "POST":
+        return render(
+            request,
+            "board/confirm_delete.html",
+            {"project": project, **_projects_context(request)},
+        )
+
+    if project.is_default:
+        messages.error(
+            request,
+            "The default project cannot be deleted. It is this repository, and "
+            "the whole task tree hangs from it. Archive it instead if needed.",
+        )
+        return redirect("project_detail", key=project.key)
+
+    name = project.name
+    project.delete()
+    messages.success(request, f"Project '{name}' deleted.")
+    return redirect("projects_list")
+
+
+@login_required
+def project_members(request, key):
+
+    project = _visible_project(request.user, key)
+    if project is None:
+        return _no_access(request, key)
+    if not permissions.user_may_create_projects(request.user):
+        return _no_write(request, project)
+
+    from .project_forms import MembershipForm
+
+    form = MembershipForm(request.POST or None, project=project)
+    if request.method == "POST" and form.is_valid():
+        ProjectMembership.objects.create(
+            project=project,
+            user=form.cleaned_data["user"],
+            can_write=form.cleaned_data["can_write"],
+            granted_by=request.user,
+        )
+        messages.success(
+            request,
+            f"{form.cleaned_data['user'].username} now has "
+            f"{'write' if form.cleaned_data['can_write'] else 'read'} access.",
+        )
+        return redirect("project_members", key=project.key)
+
+    return render(
+        request,
+        "board/members.html",
+        {
+            "project": project,
+            "form": form,
+            "members": project.memberships.select_related("user", "granted_by"),
+            "creator": project.created_by,
+            **_projects_context(request),
+        },
+    )
+
+
+@login_required
+def member_revoke(request, key, user_id):
+
+    project = _visible_project(request.user, key)
+    if project is None:
+        return _no_access(request, key)
+    if not permissions.user_may_create_projects(request.user):
+        return _no_write(request, project)
+    if request.method != "POST":
+        return redirect("project_members", key=project.key)
+
+    m = project.memberships.filter(user_id=user_id).first()
+    if m is None:
+        return redirect("project_members", key=project.key)
+    name = m.user.username
+    m.delete()
+    messages.success(request, f"{name} no longer has access to {project.key}.")
+    return redirect("project_members", key=project.key)
+
+
+@login_required
+def member_toggle(request, key, user_id):
+    """Flip an existing member between read and write."""
+
+    project = _visible_project(request.user, key)
+    if project is None:
+        return _no_access(request, key)
+    if not permissions.user_may_create_projects(request.user):
+        return _no_write(request, project)
+    if request.method != "POST":
+        return redirect("project_members", key=project.key)
+
+    m = project.memberships.filter(user_id=user_id).first()
+    if m is None:
+        return redirect("project_members", key=project.key)
+    m.can_write = not m.can_write
+    m.save(update_fields=["can_write"])
+    verb = "write" if m.can_write else "read"
+    messages.success(request, f"{m.user.username} now has {verb} access.")
+    return redirect("project_members", key=project.key)
+
+
+# --- helpers ---------------------------------------------------------------
+
+
+def _slugify(name: str) -> str:
+    from django.utils.text import slugify
+
+    base = slugify(name)[:60] or "project"
+    return base
+
+
+def _ensure_backlog(project):
+    from .models import Backlog
+
+    if not project.backlogs.filter(is_default=True).exists():
+        Backlog.objects.create(project=project, name="Backlog", is_default=True)
+
+
+def _visible_project(user, key):
+
+    p = Project.objects.filter(key=key).first()
+    if p is None or not permissions.user_can_see_project(user, p):
+        return None
+    return p
+
+
+def _no_access(request, key):
+    """
+    404 for a project you may not see.
+
+    Not 403: whether a project exists is itself information a user with no
+    access to it should not be able to enumerate.
+    """
+    from django.http import Http404
+
+    raise Http404("no such project")
+
+
+def _no_write(request, project):
+    return render(
+        request,
+        "board/refused.html",
+        {
+            "title": "Read-only",
+            "detail": f"You have read access to '{project.key}' but not write "
+                      f"access. Ask an administrator to change it.",
+        },
+        status=403,
     )

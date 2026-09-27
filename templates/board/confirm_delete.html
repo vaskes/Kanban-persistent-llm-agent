@@ -1,0 +1,17 @@
+{% extends "board/base.html" %}
+{% block title %}Delete {{ project.name }}{% endblock %}
+{% block content %}
+<h1>Delete this project?</h1>
+<div class="card" style="max-width:560px">
+  <p><b>{{ project.name }}</b> <code>{{ project.key }}</code> and all
+     {{ project.tasks.count }} task{{ project.tasks.count|pluralize }} in it will be
+     deleted. This cannot be undone.</p>
+  <p class="muted">If you only want it out of the way, archive it from the
+     admin site instead — that keeps the history.</p>
+  <form method="post">
+    {% csrf_token %}
+    <button class="btn danger" type="submit">Yes, delete it</button>
+    <a class="btn" href="{% url 'project_detail' project.key %}">Cancel</a>
+  </form>
+</div>
+{% endblock %}

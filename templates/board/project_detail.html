@@ -1,0 +1,82 @@
+{% extends "board/base.html" %}
+{% block title %}{{ project.name }} — kanban-agent{% endblock %}
+{% block content %}
+<h1>{{ project.name }}
+  {% if project.is_default %}<span class="tag">default</span>{% endif %}
+  {% if project.archived %}<span class="tag warn">archived</span>{% endif %}
+</h1>
+<p class="muted">
+  <code>{{ project.key }}</code>
+  {% if project.repo_url %} · <a href="{{ project.repo_url }}" target="_blank" rel="noopener">repository</a>{% endif %}
+  · {{ task_count }} task{{ task_count|pluralize }}
+</p>
+{% if project.description %}<div class="card">{{ project.description|linebreaksbr }}</div>{% endif %}
+
+<p>
+  {% if can_write %}<a class="btn primary" href="{% url 'project_edit' project.key %}">Edit</a>{% endif %}
+  {% if can_manage %}<a class="btn" href="{% url 'project_members' project.key %}">Manage access</a>{% endif %}
+  {% if can_manage and not project.is_default %}
+    <form class="inline" method="post" action="{% url 'project_delete' project.key %}"
+          onsubmit="return confirm('Delete project {{ project.name|escapejs }}? All its tasks go with it.')">
+      {% csrf_token %}<button class="btn danger">Delete</button>
+    </form>
+  {% endif %}
+  <a class="btn" href="/projects/">All projects</a>
+</p>
+
+<h2>Backlogs</h2>
+{% for b in backlogs %}
+<div class="card" style="padding:12px 16px">
+  <b>{{ b.name }}</b>
+  <span class="help">{{ b.tasks.count }} task{{ b.tasks.count|pluralize }}
+    {% if b.is_default %}<span class="tag">default</span>{% endif %}</span>
+</div>
+{% empty %}<p class="muted">No backlogs.</p>{% endfor %}
+
+<h2>Access</h2>
+<table>
+  <tr><th>Person</th><th>Level</th><th>Granted by</th><th></th></tr>
+  {% if project.created_by %}
+  <tr><td>{{ project.created_by.username }}</td>
+      <td><span class="tag ok">write</span></td>
+      <td class="muted">creator</td>
+      <td>{% if can_manage and project.created_by.username != request.user.username %}
+        <a class="btn sm" href="{% url 'project_members' project.key %}">Revoke</a>{% endif %}</td></tr>
+  {% endif %}
+  {% for m in members %}
+  <tr><td>{{ m.user.username }}</td>
+      <td>{% if m.can_write %}<span class="tag ok">write</span>{% else %}<span class="tag">read</span>{% endif %}</td>
+      <td class="muted">{{ m.granted_by.username|default:"—" }}</td>
+      <td style="text-align:right;white-space:nowrap">
+        {% if can_manage %}
+          <form class="inline" method="post" action="{% url 'member_toggle' project.key m.user_id %}">
+            {% csrf_token %}
+            <button class="btn sm">Make {% if m.can_write %}read{% else %}write{% endif %}</button>
+          </form>
+          <form class="inline" method="post" action="{% url 'member_revoke' project.key m.user_id %}"
+                onsubmit="return confirm('Remove {{ m.user.username }} from this project?')">
+            {% csrf_token %}<button class="btn sm danger">Revoke</button>
+          </form>
+        {% endif %}
+      </td></tr>
+  {% empty %}{% if not project.created_by %}
+    <tr><td colspan="4" class="muted">Nobody has been granted access.</td></tr>
+  {% endif %}{% endfor %}
+</table>
+
+<h2>Tasks</h2>
+{% if tasks %}
+<table>
+  <tr><th>Task</th><th>Status</th><th>Kind</th><th>Priority</th><th>Attempts</th></tr>
+  {% for t in tasks %}
+  <tr>
+    <td><a href="/task/{{ t.id }}/">{{ t.title|truncatechars:60 }}</a></td>
+    <td><span class="tag">{{ t.status }}</span></td>
+    <td class="muted">{{ t.kind }}</td>
+    <td>{{ t.priority }}</td>
+    <td>{{ t.attempts }}/{{ t.max_attempts }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<p class="muted">No tasks in this project yet.</p>{% endif %}
+{% endblock %}

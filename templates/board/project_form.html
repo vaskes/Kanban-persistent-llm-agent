@@ -1,0 +1,35 @@
+{% extends "board/base.html" %}
+{% block title %}{% if mode == 'create' %}New project{% else %}Edit {{ project.name }}{% endif %} — kanban-agent{% endblock %}
+{% block content %}
+<h1>{% if mode == 'create' %}New project{% else %}Edit project{% endif %}</h1>
+<p class="muted">
+{% if mode == 'create' %}
+  The project key is generated from the name and never changes, so links and
+  stored chat scopes stay valid.
+{% else %}
+  Editing <code>{{ project.key }}</code>. The key is fixed — changing it would
+  break every link to this project.
+{% endif %}
+</p>
+
+<div class="card" style="max-width:620px">
+<form method="post">
+  {% csrf_token %}
+  {# non-field errors were silently dropped here once, which is how a rejected #}
+  {# action ended up looking like it had simply done nothing #}
+  {% if form.non_field_errors %}<div class="msg err">{{ form.non_field_errors }}</div>{% endif %}
+  {% for f in form %}
+    <label for="{{ f.id_for_label }}">{{ f.label }}</label>
+    {{ f }}
+    {% if f.help_text %}<p class="help">{{ f.help_text }}</p>{% endif %}
+    {% for e in f.errors %}<p class="errs">{{ e }}</p>{% endfor %}
+  {% endfor %}
+  <p style="margin-top:20px">
+    <button class="btn primary" type="submit">
+      {% if mode == 'create' %}Create project{% else %}Save changes{% endif %}
+    </button>
+    <a class="btn" href="{% if mode == 'edit' %}{% url 'project_detail' project.key %}{% else %}/projects/{% endif %}">Cancel</a>
+  </p>
+</form>
+</div>
+{% endblock %}

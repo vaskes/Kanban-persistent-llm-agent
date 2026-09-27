@@ -1,16 +1,43 @@
-<!doctype html><html><head><meta charset="utf-8"><title>reports</title>
-<style>body{font:14px system-ui;background:#111;color:#eee;padding:20px}
-table{border-collapse:collapse;margin-bottom:18px}td,th{padding:5px 14px;border:1px solid #333;text-align:left}
-a{color:#7cc4ff}h3{color:#9a9;margin-bottom:6px}</style></head><body>
-<p><a href="/">← board</a></p><h1>reports</h1>
-<h3>by status</h3><table><tr><th>status</th><th>n</th></tr>
-{% for r in by_status %}<tr><td>{{ r.status }}</td><td>{{ r.n }}</td></tr>{% endfor %}</table>
-<h3>by kind</h3><table><tr><th>kind</th><th>n</th></tr>
-{% for r in by_kind %}<tr><td>{{ r.kind }}</td><td>{{ r.n }}</td></tr>{% endfor %}</table>
-<h3>events by actor</h3><table><tr><th>actor</th><th>n</th></tr>
-{% for r in by_actor %}<tr><td>{{ r.actor }}</td><td>{{ r.n }}</td></tr>{% endfor %}</table>
-<h3>burn</h3><p>tokens: {{ total_tokens }} · attempts: {{ total_attempts }}</p>
-<h3>stuck cards</h3><table><tr><th>title</th><th>score</th></tr>
-{% for s in stuck %}<tr><td><a href="/task/{{ s.id }}/">{{ s.title|truncatechars:50 }}</a></td><td>{{ s.stuck_score|floatformat:0 }}</td></tr>
-{% empty %}<tr><td colspan="2">—</td></tr>{% endfor %}</table>
-</body></html>
+{% extends "board/base.html" %}
+{% block title %}Reports — kanban-agent{% endblock %}
+{% block content %}
+<h1>Reports</h1>
+<p class="muted">Everything here is scoped to the projects you can see.</p>
+
+<div class="row2">
+  <div class="card">
+    <h2 style="margin-top:0">By status</h2>
+    <table>{% for r in by_status %}
+      <tr><td>{{ r.status }}</td><td style="text-align:right">{{ r.n }}</td></tr>
+    {% empty %}<tr><td class="muted">No visible tasks.</td></tr>{% endfor %}</table>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">By kind</h2>
+    <table>{% for r in by_kind %}
+      <tr><td>{{ r.kind }}</td><td style="text-align:right">{{ r.n }}</td></tr>
+    {% empty %}<tr><td class="muted">No visible tasks.</td></tr>{% endfor %}</table>
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Events by actor</h2>
+  <table>{% for r in by_actor %}
+    <tr><td>{{ r.actor }}</td><td style="text-align:right">{{ r.n }}</td></tr>
+  {% empty %}<tr><td class="muted">No events.</td></tr>{% endfor %}</table>
+</div>
+
+<div class="row2">
+  <div class="card">
+    <h2 style="margin-top:0">Spend</h2>
+    <p style="font-size:22px;margin:6px 0 2px">{{ total_tokens }} <span style="font-size:12px;color:#8b8d94">tokens</span></p>
+    <p style="font-size:13px;color:#8b8d94;margin:0">{{ total_attempts }} attempts</p>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Stuck cards</h2>
+    <table>{% for s in stuck %}
+      <tr><td><a href="/task/{{ s.id }}/">{{ s.title|truncatechars:34 }}</a></td>
+          <td style="text-align:right"><span class="tag warn">{{ s.stuck_score|floatformat:0 }}</span></td></tr>
+    {% empty %}<tr><td class="muted">Nothing is stuck.</td></tr>{% endfor %}</table>
+  </div>
+</div>
+{% endblock %}

@@ -1,45 +1,58 @@
-<!doctype html><html><head><meta charset="utf-8">
-<title>kanban-agent board</title>
+{% extends "board/base.html" %}
+{% block title %}Board — kanban-agent{% endblock %}
+{% block content %}
+
 <style>
- body{font:14px system-ui;margin:0;background:#111;color:#eee}
- header{padding:12px 20px;background:#1c1c22;border-bottom:1px solid #2c2c36}
- .cols{display:flex;gap:10px;padding:12px;overflow-x:auto;align-items:flex-start}
- .col{min-width:240px;background:#1a1a20;border:1px solid #2c2c36;border-radius:6px;padding:8px}
- .col h3{margin:2px 4px 8px;font-size:12px;text-transform:uppercase;color:#9a9}
- .card{background:#24242c;border:1px solid #33333f;border-radius:4px;padding:8px;margin-bottom:6px}
- .card a{color:#7cc4ff;text-decoration:none}
- .meta{font-size:11px;color:#888;margin-top:4px}
- .empty{margin:40px auto;max-width:520px;text-align:center;color:#8b8d94}
- .empty h2{color:#e8e8ea;font-size:17px;margin:0 0 10px}
- .empty p{line-height:1.7;margin:8px 0}
- a.nav{color:#7cc4ff;margin-left:14px}
-</style></head><body>
-<header><b>kanban-agent</b>
- <span class="nav"><a href="/reports/">reports</a></span>
- <span class="nav"><a href="/admin/">admin</a></span>
- <span class="nav">{{ request.user.username }}</span>
- <form method="post" action="/logout/" style="display:inline;margin-left:10px">
-   {% csrf_token %}<button class="nav" style="background:none;border:0;color:#7cc4ff;
-   cursor:pointer;font:inherit;padding:0">Sign out</button></form>
-</header>
+ .cols{display:flex;gap:10px;overflow-x:auto;align-items:flex-start;padding-bottom:20px}
+ .col{min-width:238px;flex:0 0 auto;background:#141519;border:1px solid #24262d;
+      border-radius:8px;padding:9px}
+ .col h3{margin:1px 4px 9px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;
+         color:#8b8d94;font-weight:500;display:flex;justify-content:space-between}
+ .col h3 .n{color:#5d6069;font-weight:400}
+ .card{background:#1a1c21;border:1px solid #282a31;border-radius:6px;padding:9px;
+       margin-bottom:7px}
+ .card:hover{border-color:#343741}
+ .card a{color:#e8e8ea;text-decoration:none}
+ .card .meta{font-size:11px;color:#71747d;margin-top:5px}
+ .badge{display:inline-block;padding:1px 5px;border-radius:3px;font-size:10.5px;
+        background:#22242a;color:#9a9da6;border:1px solid #2e3038}
+ .badge.stuck{color:#d3a95f;border-color:#4a3c22}
+ .badge.human{color:#f0a4a8;border-color:#5c2f33}
+</style>
+
 {% if empty %}
- <div class="empty">
+<div class="empty-state">
   <h2>No projects yet</h2>
   <p>Your account exists, but it has not been given access to any project.</p>
   <p>An administrator has to grant you read access to at least one project before
      anything appears here. Until then this board stays empty &mdash; that is
      expected, not a fault.</p>
-  <p><a href="/logout/">Sign out</a></p>
- </div>
+  <p style="margin-top:20px"><a class="btn" href="/projects/">See projects</a></p>
+</div>
 {% endif %}
+
 <div class="cols">
 {% for c in columns %}
- <div class="col"><h3>{{ c.label }} ({{ c.count }})</h3>
- {% for t in c.tasks %}
-  <div class="card"><a href="/task/{{ t.id }}/">{{ t.title|truncatechars:60 }}</a>
-   <div class="meta">p{{ t.priority }} · {{ t.kind }} · att {{ t.attempts }}/{{ t.max_attempts }}{% if t.stuck_score > 0 %} · STUCK {{ t.stuck_score|floatformat:0 }}{% endif %}</div>
+  <div class="col">
+    <h3>{{ c.label }} <span class="n">{{ c.count }}</span></h3>
+    {% for t in c.tasks %}
+      <div class="card">
+        <a href="/task/{{ t.id }}/">{{ t.title|truncatechars:56 }}</a>
+        <div class="meta">
+          p{{ t.priority }} · {{ t.kind }}
+          {% if t.assignee %} · @{{ t.assignee.name }}{% endif %}
+          · {{ t.attempts }}/{{ t.max_attempts }} att
+          {% if t.tokens_used %}<br>{{ t.tokens_used }} tokens{% endif %}
+          {% if t.stuck_score > 0 %}
+            <span class="badge stuck">stuck {{ t.stuck_score|floatformat:0 }}</span>{% endif %}
+          {% if t.needs_human %}
+            <span class="badge human">needs human</span>{% endif %}
+        </div>
+      </div>
+    {% empty %}
+      <div style="color:#4a4d55;font-size:12px;padding:4px 5px">—</div>
+    {% endfor %}
   </div>
- {% empty %}<div class="meta">—</div>{% endfor %}
- </div>
 {% endfor %}
-</div></body></html>
+</div>
+{% endblock %}

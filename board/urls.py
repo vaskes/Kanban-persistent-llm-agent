@@ -18,6 +18,18 @@ urlpatterns = [
     path("", views.board, name="board"),
     path("task/<str:task_id>/", views.task_detail, name="task_detail"),
     path("reports/", views.reports, name="reports"),
+
+    # --- projects ---
+    path("projects/", views.projects_list, name="projects_list"),
+    path("projects/new/", views.project_create, name="project_create"),
+    path("projects/<slug:key>/", views.project_detail, name="project_detail"),
+    path("projects/<slug:key>/edit/", views.project_edit, name="project_edit"),
+    path("projects/<slug:key>/delete/", views.project_delete, name="project_delete"),
+    path("projects/<slug:key>/members/", views.project_members, name="project_members"),
+    path("projects/<slug:key>/members/<int:user_id>/revoke/",
+         views.member_revoke, name="member_revoke"),
+    path("projects/<slug:key>/members/<int:user_id>/toggle/",
+         views.member_toggle, name="member_toggle"),
 ]
 
 # --- agent API ---
