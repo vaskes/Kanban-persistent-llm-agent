@@ -13,6 +13,15 @@ from board.models import Status, Task
 
 pytestmark = pytest.mark.django_db
 
+@pytest.fixture
+def auth_client(client, django_user_model):
+    """A client with an active session, for tests about content rather than auth."""
+    u = django_user_model.objects.create_user("op", password="pw12345")
+    client.force_login(u)
+    return client
+
+
+
 
 def test_healthz(client):
     r = client.get(reverse("board:healthz") if False else "/healthz")
@@ -20,9 +29,9 @@ def test_healthz(client):
     assert r.json()["ok"] is True
 
 
-def test_board_renders_all_columns(client):
+def test_board_renders_all_columns(auth_client):
     Task.objects.create(title="visible", acceptance="x", status=Status.READY)
-    r = client.get("/")
+    r = auth_client.get("/")
     assert r.status_code == 200
     body = r.content.decode()
     for label in ("Inbox", "Backlog", "Ready", "In progress", "Review", "Done"):
@@ -30,28 +39,28 @@ def test_board_renders_all_columns(client):
     assert "visible" in body
 
 
-def test_task_detail_renders_audit_trail(client):
+def test_task_detail_renders_audit_trail(auth_client):
     t = Task.objects.create(title="audited", acceptance="x", status=Status.READY)
     from board.models import Actor
     from board.state import Ctx, transition
 
     transition(t, Status.IN_PROGRESS, Ctx(actor=Actor.AGENT, reason="claimed for test"))
-    r = client.get(f"/task/{t.pk}/")
+    r = auth_client.get(f"/task/{t.pk}/")
     assert r.status_code == 200
     body = r.content.decode()
     assert "audited" in body
     assert "agent" in body
 
 
-def test_reports_renders(client):
+def test_reports_renders(auth_client):
     Task.objects.create(title="token burner", acceptance="x", status=Status.READY, tokens_used=1234)
-    r = client.get("/reports/")
+    r = auth_client.get("/reports/")
     assert r.status_code == 200
     assert "reports" in r.content.decode()
 
 
-def test_unknown_task_returns_404(client):
-    assert client.get("/task/doesnotexist/").status_code == 404
+def test_unknown_task_returns_404(auth_client):
+    assert auth_client.get("/task/doesnotexist/").status_code == 404
 
 
 # --------------------------------------------------------------------------
@@ -73,14 +82,14 @@ def test_board_requires_login(client):
 @pytest.mark.django_db
 def test_task_detail_requires_login(client):
     t = Task.objects.create(title="secret", acceptance="x", status=Status.READY)
-    r = client.get(f"/task/{t.pk}/")
+    r = auth_client.get(f"/task/{t.pk}/")
     assert r.status_code == 302
     assert "/login/" in r["Location"]
 
 
 @pytest.mark.django_db
 def test_reports_requires_login(client):
-    r = client.get("/reports/")
+    r = auth_client.get("/reports/")
     assert r.status_code == 302
     assert "/login/" in r["Location"]
 
