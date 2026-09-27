@@ -8,7 +8,16 @@
 #   USERNAME=vaskes PASSWORD=... bash scripts/smoke.sh
 set -euo pipefail
 
-BASE="${BASE:-http://127.0.0.1:8901}"
+BASE="${BASE:-}"
+if [ -z "$BASE" ]; then
+  # Take the address the service is actually bound to. Guessing 127.0.0.1 fails
+  # once BIND_ADDR is set to a LAN address, and the failure looks like an
+  # outage rather than a wrong address.
+  if [ -f .env ]; then
+    BIND=$(grep -E '^BIND_ADDR=' .env | tail -1 | cut -d= -f2- | tr -d '"'"'"'')
+  fi
+  BASE="http://${BIND:-127.0.0.1:8901}"
+fi
 USERNAME="${USERNAME:-vaskes}"
 PASSWORD="${PASSWORD:-kanbanadmin}"
 JAR="$(mktemp)"
