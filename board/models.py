@@ -506,7 +506,22 @@ class Agent(models.Model):
     model_max_tokens = models.IntegerField(null=True, blank=True)
     model_temperature = models.FloatField(null=True, blank=True)
 
+    # --- model reachability, written by board.probe.probe_agent ---
+    # A probe is a one-shot check, not a continuous heartbeat, so its result
+    # is "still good" for a generous window. Storing the error too means the
+    # admin can show *why* a model went unreachable instead of a generic
+    # "no". Both fields default to null/blank — a row that was never probed
+    # is distinct from one that probed and failed.
+    model_checked_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    model_check_ok = models.BooleanField(default=False)
+    model_check_error = models.CharField(max_length=300, blank=True, default="")
+
+    # Agent daemon heartbeat (last_seen_at) is a different signal — it shows
+    # that an agent process checked in. A model-backed agent that is its own
+    # process never sets it; a worker daemon that fronts a remote model sets
+    # both. The two columns stay independent.
     REACHABLE_WINDOW_SECONDS = 120
+    MODEL_REACHABLE_WINDOW_SECONDS = 24 * 3600  # probe is a one-shot test
 
     class Meta:
         db_table = "agents"
@@ -522,17 +537,35 @@ class Agent(models.Model):
 
         A status column would go stale the instant an agent stopped checking in,
         and a stale 'reachable' is worse than no status at all.
+
+        Prefers the most recent of the two signals: if a probe just succeeded
+        OR a daemon just checked in, the row is reachable.
         """
-        if self.last_seen_at is None:
-            return self.Status.UNREACHABLE
-        age = (timezone.now() - self.last_seen_at).total_seconds()
-        if age <= self.REACHABLE_WINDOW_SECONDS:
+        now = timezone.now()
+        candidates = []
+        if self.last_seen_at is not None:
+            age = (now - self.last_seen_at).total_seconds()
+            if age <= self.REACHABLE_WINDOW_SECONDS:
+                candidates.append("daemon")
+        if self.model_checked_at is not None and self.model_check_ok:
+            age = (now - self.model_checked_at).total_seconds()
+            if age <= self.MODEL_REACHABLE_WINDOW_SECONDS:
+                candidates.append("model")
+        if candidates:
             return self.Status.REACHABLE
         return self.Status.UNREACHABLE
 
     @property
     def is_reachable(self) -> bool:
         return self.status == self.Status.REACHABLE
+
+    @property
+    def model_reachable(self) -> bool:
+        """True iff a recent probe succeeded."""
+        if self.model_checked_at is None or not self.model_check_ok:
+            return False
+        age = (timezone.now() - self.model_checked_at).total_seconds()
+        return age <= self.MODEL_REACHABLE_WINDOW_SECONDS
 
     @property
     def has_model(self) -> bool:

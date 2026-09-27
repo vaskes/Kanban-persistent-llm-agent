@@ -90,11 +90,15 @@ def test_probe_bumps_last_seen_on_success(boot, monkeypatch, local_llama_agent):
         ]}}]),
     )
     assert local_llama_agent.last_seen_at is None
+    assert local_llama_agent.model_checked_at is None
     r = probe_agent(local_llama_agent)
     assert r["ok"] is True
     assert r["models"] == ["ornith-1.5", "ornith-2", "ornith-3"]
     local_llama_agent.refresh_from_db()
     assert local_llama_agent.last_seen_at is not None
+    assert local_llama_agent.model_checked_at is not None
+    assert local_llama_agent.model_check_ok is True
+    assert local_llama_agent.model_check_error == ""
 
 
 def test_probe_reports_failure_without_bumping_last_seen(
@@ -108,6 +112,10 @@ def test_probe_reports_failure_without_bumping_last_seen(
     assert r["ok"] is False
     local_llama_agent.refresh_from_db()
     assert local_llama_agent.last_seen_at is None
+    # but the failure IS recorded so the admin can show why
+    assert local_llama_agent.model_checked_at is not None
+    assert local_llama_agent.model_check_ok is False
+    assert "503" in local_llama_agent.model_check_error
 
 
 def test_probe_handles_connection_refused(boot, monkeypatch, local_llama_agent):

@@ -34,9 +34,12 @@ def probe_agent(agent: Agent) -> dict[str, Any]:
     Hit the agent's configured model endpoint and return what we learned.
 
     Returns a dict always: callers (admin, CLI, future cron) should never
-    have to wrap this in try/except. On success, `last_seen_at` is bumped
-    so the existing `status` derivation flips to 'reachable'.
+    have to wrap this in try/except. On success, model_checked_at /
+    model_check_ok / model_check_error are persisted (and so is
+    last_seen_at, for symmetry with the daemon-heartbeat path).
     """
+    from django.utils import timezone as djtz
+
     if not agent.has_model:
         return {"ok": False, "error": "no model configured"}
 
@@ -50,24 +53,38 @@ def probe_agent(agent: Agent) -> dict[str, Any]:
         with httpx.Client(timeout=httpx.Timeout(10.0, connect=3.0)) as c:
             r = c.get(url, headers=headers)
     except httpx.HTTPError as exc:
-        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        return _record_failure(agent, f"{type(exc).__name__}: {exc}")
 
     if r.status_code >= 400:
-        return {
-            "ok": False,
-            "error": f"HTTP {r.status_code} from {url}",
-            "status_code": r.status_code,
-        }
+        return _record_failure(agent, f"HTTP {r.status_code} from {url}")
 
     try:
         data = r.json().get("data", [])
     except ValueError:
-        return {"ok": False, "error": f"non-JSON response from {url}"}
+        return _record_failure(agent, f"non-JSON response from {url}")
 
     models = [d.get("id", "") for d in data if d.get("id")]
     if not models:
-        return {"ok": False, "error": f"empty model list from {url}"}
+        return _record_failure(agent, f"empty model list from {url}")
 
-    agent.heartbeat()
+    now = djtz.now()
+    Agent.objects.filter(pk=agent.pk).update(
+        last_seen_at=now,
+        model_checked_at=now,
+        model_check_ok=True,
+        model_check_error="",
+    )
     return {"ok": True, "models": models, "base_url": agent.model_base_url}
+
+
+def _record_failure(agent: Agent, error: str) -> dict[str, Any]:
+    """Persist a probe failure so the admin shows *why* it failed."""
+    from django.utils import timezone as djtz
+
+    Agent.objects.filter(pk=agent.pk).update(
+        model_checked_at=djtz.now(),
+        model_check_ok=False,
+        model_check_error=error[:300],
+    )
+    return {"ok": False, "error": error}
 

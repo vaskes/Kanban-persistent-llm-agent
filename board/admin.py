@@ -62,23 +62,31 @@ class BacklogAdmin(admin.ModelAdmin):
 class AgentAdmin(admin.ModelAdmin):
     list_display = [
         "name", "kind", "model_provider", "model_name",
-        "status", "last_seen_at", "model_base_url",
+        "status", "model_reachable", "model_checked_at",
+        "last_seen_at", "model_base_url",
     ]
-    list_filter = ["kind", "model_provider"]
-    search_fields = ["name", "model_base_url", "base_url", "note"]
-    readonly_fields = ["registered_at", "last_seen_at"]
+    list_filter = ["kind", "model_provider", "model_check_ok"]
+    search_fields = ["name", "model_base_url", "base_url", "note", "model_check_error"]
+    readonly_fields = [
+        "registered_at", "last_seen_at",
+        "model_checked_at", "model_check_ok", "model_check_error",
+    ]
     actions = ["probe_reachability"]
 
     @admin.display(description="status")
     def status(self, obj):
         return obj.status
 
+    @admin.display(boolean=True, description="model reachable")
+    def model_reachable(self, obj):
+        return obj.model_reachable
+
     @admin.action(description="Probe model reachability now")
     def probe_reachability(self, request, queryset):
         """
         Synchronously GET {model_base_url}/models for every selected row.
-        Updates last_seen_at on success so the status column flips from
-        'unreachable' (never heard of it) to 'reachable' (model answered).
+        Updates model_checked_at / model_check_ok / model_check_error and
+        last_seen_at so the status and model_reachable columns both flip.
         The full result of every probe is written to the message, because
         'it probably worked' is not what the operator needs.
         """
