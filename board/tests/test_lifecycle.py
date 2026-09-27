@@ -144,6 +144,7 @@ def test_sweep_returns_expired_lease_to_ready():
 
 
 def test_sweep_leaves_valid_lease_alone():
+    make_task()
     got = claim("w1", lease_seconds=900)
     n = sweep_leases(lease_seconds=900)
     assert n == 0
@@ -152,23 +153,27 @@ def test_sweep_leaves_valid_lease_alone():
 
 
 def test_sweep_bumps_stuck_score():
+    """
+    A card that keeps dying must become visibly more stuck, so the operator can
+    see it needs attention. Requires re-claiming between sweeps: after a sweep
+    the card is READY (recovered), and only an IN_PROGRESS card can expire.
+    """
+    make_task(max_attempts=10)
     got = claim("w1", lease_seconds=900)
-    Task.objects.filter(pk=got.pk).update(
-        lease_expires_at=timezone.now() - timezone.timedelta(seconds=1)
-    )
-    sweep_leases(lease_seconds=900)
-    got.refresh_from_db()
-    assert got.stuck_score == 1.0
-
-    Task.objects.filter(pk=got.pk).update(
-        lease_expires_at=timezone.now() - timezone.timedelta(seconds=1)
-    )
-    sweep_leases(lease_seconds=900)
-    got.refresh_from_db()
-    assert got.stuck_score == 2.0
+    for expected in (1.0, 2.0, 3.0):
+        Task.objects.filter(pk=got.pk).update(
+            lease_expires_at=timezone.now() - timezone.timedelta(seconds=1)
+        )
+        sweep_leases(lease_seconds=900)
+        got.refresh_from_db()
+        assert got.stuck_score == expected
+        assert got.status == Status.READY
+        got = claim("w1", lease_seconds=900)
+        assert got is not None
 
 
 def test_sweep_logs_lease_expired_event():
+    make_task()
     got = claim("w1", lease_seconds=900)
     Task.objects.filter(pk=got.pk).update(
         lease_expires_at=timezone.now() - timezone.timedelta(seconds=1)
@@ -178,17 +183,26 @@ def test_sweep_logs_lease_expired_event():
 
 
 def test_stuck_score_is_capped():
+    make_task(max_attempts=30)
     got = claim("w1", lease_seconds=900)
-    Task.objects.filter(pk=got.pk).update(
-        lease_expires_at=timezone.now() - timezone.timedelta(seconds=1)
-    )
     for _ in range(15):
         Task.objects.filter(pk=got.pk).update(
             lease_expires_at=timezone.now() - timezone.timedelta(seconds=1)
         )
         sweep_leases(lease_seconds=900)
+        got = claim("w1", lease_seconds=900)
     got.refresh_from_db()
     assert got.stuck_score == 10.0
+
+
+def test_claim_refusal_is_logged_for_operator():
+    make_task(max_attempts=1)
+    first = claim("w1", lease_seconds=900)
+    transition(first, Status.READY, Ctx(actor=Actor.AGENT, reason="retry"))
+    assert claim("w1", lease_seconds=900) is None
+    ev = first.events.filter(event="claim_refused").first()
+    assert ev is not None
+    assert ev.payload["reason"] == "attempts_exhausted"
 
 
 # --------------------------------------------------------------------------
@@ -217,14 +231,33 @@ def test_unblock_moves_card_when_deps_done():
 # --------------------------------------------------------------------------
 
 
-def test_card_fails_after_budget_exhausted_via_claim():
-    t = make_task(max_attempts=2)
-    for _ in range(2):
-        got = claim("w1", lease_seconds=900)
-        assert got is not None
-        transition(
-            got, Status.REVIEW, Ctx(actor=Actor.AGENT, evidence={"ok": 1})
-        )
-        transition(got, Status.IN_PROGRESS, Ctx(actor=Actor.AGENT))
+def test_claim_refused_after_attempts_exhausted():
+    """
+    Real retry path: a failed attempt is released back to READY, then claimed
+    again. The third claim must be refused because the budget is a hard cap.
+    """
+    make_task(max_attempts=2)
+
+    first = claim("w1", lease_seconds=900)
+    assert first is not None
+    transition(first, Status.READY, Ctx(actor=Actor.AGENT, reason="released for retry"))
+
+    second = claim("w1", lease_seconds=900)
+    assert second is not None
+    second.refresh_from_db()
+    assert second.attempts == 2
+    transition(second, Status.READY, Ctx(actor=Actor.AGENT, reason="released for retry"))
 
     assert claim("w1", lease_seconds=900) is None
+
+
+def test_budget_blocks_claim_but_operator_may_override():
+    make_task(max_attempts=1)
+    first = claim("w1", lease_seconds=900)
+    transition(first, Status.READY, Ctx(actor=Actor.AGENT, reason="retry"))
+
+    t = Task.objects.get(title="card")
+    with pytest.raises(TransitionError, match="attempts exhausted"):
+        transition(t, Status.IN_PROGRESS, Ctx(actor=Actor.AGENT))
+    transition(t, Status.IN_PROGRESS, Ctx(actor=Actor.OPERATOR))
+    assert t.status == Status.IN_PROGRESS

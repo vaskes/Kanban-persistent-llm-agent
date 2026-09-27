@@ -210,6 +210,11 @@ def transition(
         task.attention_reason = ctx.reason or "operator attention required"
     if to in {Status.DONE, Status.IN_PROGRESS}:
         task.progress_pct = 100 if to == Status.DONE else task.progress_pct
+    if to == Status.REVIEW:
+        # real progress: the executor produced evidence, so the card is not
+        # stuck any more. Decay rather than reset, so a card that churns
+        # between DONE and reopened still carries some signal.
+        task.stuck_score = max(task.stuck_score - 1.0, 0.0)
 
     task.save()
 
@@ -249,12 +254,37 @@ def claim(worker: str, lease_seconds: int, allowed_kinds: list[str] | None = Non
     if task.autonomy == "MANUAL":
         return None
 
+    # Budget caps are enforced here, not only in transition(). claim() writes
+    # status directly (it must, to hold the row lock), so without this check
+    # the whole budget guarantee could be bypassed by taking a card.
+    if task.attempts_exhausted or task.tokens_exhausted:
+        TaskEvent.objects.create(
+            task=task,
+            actor=Actor.SYSTEM,
+            event="claim_refused",
+            from_status=Status.READY,
+            to_status=Status.READY,
+            payload={
+                "reason": "attempts_exhausted"
+                if task.attempts_exhausted
+                else "tokens_exhausted",
+                "attempts": task.attempts,
+                "max_attempts": task.max_attempts,
+                "tokens_used": task.tokens_used,
+                "max_tokens": task.max_tokens,
+            },
+        )
+        return None
+
     task.status = Status.IN_PROGRESS
     task.claimed_by = worker
     task.lease_expires_at = timezone.now() + timezone.timedelta(seconds=lease_seconds)
     task.heartbeat_at = timezone.now()
     task.attempts += 1
-    task.stuck_score = 0.0
+    # NOTE: stuck_score is deliberately NOT reset here. It is cumulative
+    # evidence that this card keeps dying, and it must survive re-claims or the
+    # operator can never see a card that has failed five times in a row. It
+    # decays on real progress instead (see transition() to REVIEW).
     task.save()
 
     Attempt.objects.create(task=task, started_at=timezone.now())

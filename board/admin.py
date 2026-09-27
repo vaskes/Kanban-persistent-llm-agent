@@ -13,7 +13,6 @@ class TaskAdmin(admin.ModelAdmin):
     search_fields = ["title", "goal", "acceptance", "current_step"]
     readonly_fields = ["id", "created_at", "updated_at", "closed_at"]
     ordering = ["-priority", "created_at"]
-    filter_horizontal = ["dependencies"]
 
 
 @admin.register(TaskEvent)
