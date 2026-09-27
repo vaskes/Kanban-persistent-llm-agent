@@ -60,14 +60,36 @@ class BacklogAdmin(admin.ModelAdmin):
 
 @admin.register(Agent)
 class AgentAdmin(admin.ModelAdmin):
-    list_display = ["name", "kind", "status", "last_seen_at", "base_url"]
-    list_filter = ["kind"]
-    search_fields = ["name", "base_url", "note"]
+    list_display = [
+        "name", "kind", "model_provider", "model_name",
+        "status", "last_seen_at", "model_base_url",
+    ]
+    list_filter = ["kind", "model_provider"]
+    search_fields = ["name", "model_base_url", "base_url", "note"]
     readonly_fields = ["registered_at", "last_seen_at"]
+    actions = ["probe_reachability"]
 
     @admin.display(description="status")
     def status(self, obj):
         return obj.status
+
+    @admin.action(description="Probe model reachability now")
+    def probe_reachability(self, request, queryset):
+        """
+        Synchronously GET {model_base_url}/models for every selected row.
+        Updates last_seen_at on success so the status column flips from
+        'unreachable' (never heard of it) to 'reachable' (model answered).
+        The full result of every probe is written to the message, because
+        'it probably worked' is not what the operator needs.
+        """
+        from . import probe as _probe
+        for a in queryset:
+            result = _probe.probe_agent(a)
+            ok = "OK" if result["ok"] else "FAIL"
+            self.message_user(
+                request,
+                f"{a.name}: {ok} — {result.get('error') or result.get('models') or 'no models'}",
+            )
 
 
 @admin.register(ChatSession)
