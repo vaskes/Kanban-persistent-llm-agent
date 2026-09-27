@@ -105,6 +105,22 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# --- auth ---
+# There is no registration. Accounts are created by the operator on the host.
+LOGIN_URL = "/login/"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/login/"
+
+# Sessions carry the "don't log in every time" behaviour. Two weeks by default;
+# the cookie persists across browser restarts.
+SESSION_ENGINE = "django.contrib.sessions.backends.db"
+SESSION_COOKIE_AGE = int(env("SESSION_COOKIE_AGE", str(14 * 24 * 3600)))
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_HTTPONLY = True
+# Set SESSION_COOKIE_SECURE=true only when the board is served over HTTPS.
+SESSION_COOKIE_SECURE = env_bool("SESSION_COOKIE_SECURE", False)
+CSRF_COOKIE_SECURE = SESSION_COOKIE_SECURE
+
 # --- agent provider (part 1: interface + implementations) ---
 AGENT_PROVIDER = env("AGENT_PROVIDER", "fake")
 AGENT_LOCAL_LLAMA_BASE_URL = env("AGENT_LOCAL_LLAMA_BASE_URL", "http://127.0.0.1:8080/v1")

@@ -12,8 +12,12 @@
  a.nav{color:#7cc4ff;margin-left:14px}
 </style></head><body>
 <header><b>kanban-agent</b>
- <span class="nav"><a href="/admin/">admin</a></span>
  <span class="nav"><a href="/reports/">reports</a></span>
+ <span class="nav"><a href="/admin/">admin</a></span>
+ <span class="nav">{{ request.user.username }}</span>
+ <form method="post" action="/logout/" style="display:inline;margin-left:10px">
+   {% csrf_token %}<button class="nav" style="background:none;border:0;color:#7cc4ff;
+   cursor:pointer;font:inherit;padding:0">выйти</button></form>
 </header>
 <div class="cols">
 {% for c in columns %}

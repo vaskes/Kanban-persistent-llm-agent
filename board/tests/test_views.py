@@ -52,3 +52,85 @@ def test_reports_renders(client):
 
 def test_unknown_task_returns_404(client):
     assert client.get("/task/doesnotexist/").status_code == 404
+
+
+# --------------------------------------------------------------------------
+# authentication
+# --------------------------------------------------------------------------
+#
+# The board has no registration. Accounts are created by the operator on the
+# host, and every board view requires a session — the operator controls the
+# process, and anyone on the LAN must not be able to move cards.
+
+
+@pytest.mark.django_db
+def test_board_requires_login(client):
+    r = client.get("/")
+    assert r.status_code == 302
+    assert "/login/" in r["Location"]
+
+
+@pytest.mark.django_db
+def test_task_detail_requires_login(client):
+    t = Task.objects.create(title="secret", acceptance="x", status=Status.READY)
+    r = client.get(f"/task/{t.pk}/")
+    assert r.status_code == 302
+    assert "/login/" in r["Location"]
+
+
+@pytest.mark.django_db
+def test_reports_requires_login(client):
+    r = client.get("/reports/")
+    assert r.status_code == 302
+    assert "/login/" in r["Location"]
+
+
+@pytest.mark.django_db
+def test_healthz_stays_open_for_probes(client):
+    r = client.get("/healthz")
+    assert r.status_code == 200
+
+
+@pytest.mark.django_db
+def test_login_page_is_public(client):
+    r = client.get("/login/")
+    assert r.status_code == 200
+    assert "csrfmiddlewaretoken" in r.content.decode()
+
+
+@pytest.mark.django_db
+def test_successful_login_grants_board_access(client, django_user_model):
+    u = django_user_model.objects.create_user("op", password="pw12345")
+    r = client.post(
+        "/login/", {"username": "op", "password": "pw12345"}, follow=True
+    )
+    assert r.status_code == 200
+    assert "Ready" in r.content.decode()
+    # session cookie is issued so the operator is not asked again
+    assert client.session.get("_auth_user_id") == str(u.pk)
+
+
+@pytest.mark.django_db
+def test_bad_credentials_do_not_authenticate(client, django_user_model):
+    django_user_model.objects.create_user("op", password="pw12345")
+    r = client.post("/login/", {"username": "op", "password": "wrong"})
+    assert r.status_code == 200
+    assert client.session.get("_auth_user_id") is None
+
+
+@pytest.mark.django_db
+def test_logout_ends_the_session(client, django_user_model):
+    django_user_model.objects.create_user("op", password="pw12345")
+    client.post("/login/", {"username": "op", "password": "pw12345"})
+    assert client.session.get("_auth_user_id") is not None
+    client.post("/logout/")
+    assert client.session.get("_auth_user_id") is None
+    r = client.get("/")
+    assert r.status_code == 302
+
+
+@pytest.mark.django_db
+def test_there_is_no_registration_path(client):
+    """No signup, no password reset — accounts are operator-created only."""
+    for path in ("/register/", "/signup/", "/accounts/signup/", "/password_reset/"):
+        assert client.get(path).status_code == 404, path

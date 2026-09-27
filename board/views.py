@@ -1,11 +1,17 @@
 """Minimal views for phase 0. The full HTMX board lands in phase 1."""
 
+from django.contrib.auth.decorators import login_required
 from django.db.models import Count
 from django.shortcuts import get_object_or_404, render
 
 from .models import Status, Task
 
+# Every board view requires a session. There is no registration: accounts are
+# created by the operator, and only on this host. /healthz is the sole
+# exemption so a liveness probe still works.
 
+
+@login_required
 def board(request):
     columns = []
     by_status = (
@@ -28,6 +34,7 @@ def board(request):
     return render(request, "board/board.html", {"columns": columns})
 
 
+@login_required
 def task_detail(request, task_id):
     task = get_object_or_404(Task, pk=task_id)
     return render(
@@ -37,6 +44,7 @@ def task_detail(request, task_id):
     )
 
 
+@login_required
 def reports(request):
     from .models import TaskEvent
 
