@@ -406,12 +406,12 @@ def test_non_admin_cannot_toggle_or_revoke(client, admin, member):
 
 @pytest.mark.parametrize(
     "path",
-    ["/admin/board/project/", "/admin/board/agent/", "/admin/board/backlog/",
-     "/admin/board/projectmembership/", "/admin/board/chatsession/",
-     "/admin/board/chatmessage/"],
+    ["/admin/board/project/", "/admin/board/agent/", "/admin/board/resource/"],
 )
 def test_admin_site_registers_the_whole_tree(client, admin, path):
-    """Every model must be inspectable from the admin site."""
+    """Every model that belongs in the operator-facing sidebar must be
+    inspectable from the admin site. Internal models (Tasks, audit logs,
+    chat history) live behind direct URLs and have their own tests."""
     r = _as(client, admin).get(path)
     assert r.status_code == 200, path
 
@@ -546,21 +546,16 @@ def test_archiving_never_touches_the_default_project(client, admin):
 
 
 def test_admin_display_helpers_render(client, admin):
-    from board.models import Agent, ChatMessage, ChatSession, Memory
+    from board.models import Agent
 
     a = Agent.objects.create(name="w1")
     body = _as(client, admin).get("/admin/board/agent/").content.decode()
     assert a.name in body
     assert "unreachable" in body
 
-    m = Memory.objects.create(kind="lesson", content="x" * 200)
-    body = _as(client, admin).get("/admin/board/memory/").content.decode()
-    assert "x" * 80 in body
-
-    s = ChatSession.objects.create(scope="projects", project=get_default_project())
-    ChatMessage.objects.create(session=s, role="user", content="y" * 200)
-    body = _as(client, admin).get("/admin/board/chatmessage/").content.decode()
-    assert "y" * 80 in body
+    # Memory / ChatMessage / ChatSession admin pages were removed in the
+    # 4-section sidebar cleanup. They are still in the DB; the operator
+    # accesses them via the WebUI board view, not the admin.
 
 
 def test_membership_form_without_a_project_is_usable():

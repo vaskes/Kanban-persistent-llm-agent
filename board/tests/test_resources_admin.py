@@ -16,13 +16,12 @@ from board.admin import (
     ComfyUiEndpointAdmin,
     GitRepoAdmin,
     HostAdmin,
-    LlmEndpointAdmin,
     ResourceAdmin,
     ResourceAllocationAdmin,
     SandboxAdmin,
 )
 from board.models import (
-    Browser, ComfyUiEndpoint, GitRepo, Host, LlmEndpoint,
+    Browser, ComfyUiEndpoint, GitRepo, Host,
     Project, Resource, ResourceAllocation, Sandbox, Task,
 )
 from board.bootstrap import ensure_default_project
@@ -54,9 +53,10 @@ def staff_client(staff):
 # --- registrations exist -------------------------------------------------
 
 
-def test_every_resource_admin_class_is_registered():
-    """If a kind has no admin, the operator has no UI for it."""
-    for m in (Resource, Host, Sandbox, LlmEndpoint, ComfyUiEndpoint,
+def test_resource_subtypes_are_registered_for_url_routing():
+    """Every concrete kind must have an admin so the kind picker's add URL
+    resolves. LlmEndpoint is intentionally absent — Agent subsumes its role."""
+    for m in (Resource, Host, Sandbox, ComfyUiEndpoint,
               GitRepo, Browser, ResourceAllocation):
         assert m in dj_admin.site._registry, f"{m.__name__} not registered"
 
@@ -108,12 +108,6 @@ def test_sandbox_admin_changelist_renders(staff_client):
     assert r.status_code == 200
     assert "ubuntu:22.04" in r.content.decode()
 
-
-def test_llm_admin_changelist_renders(staff_client):
-    LlmEndpoint.objects.create(name="llm", base_url="http://x/v1", model_id="m")
-    r = staff_client.get(reverse("admin:board_llmendpoint_changelist"))
-    assert r.status_code == 200
-    assert "http://x/v1" in r.content.decode()
 
 
 def test_comfyui_admin_changelist_renders(staff_client):
@@ -181,3 +175,12 @@ def test_owner_method_renders_project_id_when_project_set(staff_client):
     assert r.status_code == 200
     # the owner's project form must show up — the project pk is short
     assert f"project:{project.pk}" in r.content.decode()
+
+
+def test_llm_endpoint_str_includes_name_and_url():
+    """LlmEndpoint is unregistered but its model still exists; the str
+    helper must remain callable for any code that touches it."""
+    from board.models import LlmEndpoint
+    # build an in-memory instance without saving (unregistered = no admin)
+    a = LlmEndpoint(name="x", base_url="http://y/v1", model_id="m")
+    assert str(a) == "llm:x → http://y/v1"

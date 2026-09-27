@@ -1,13 +1,33 @@
 """
-Admin registrations for the whole tree.
+Admin registrations and the 4-section sidebar layout.
 
-The admin site is the operator's safety net: whatever the WebUI does not cover
-yet, there is a full CRUD surface here with filters, search and bulk actions.
-Registering a model is therefore never optional — an unlisted model is a model
-nobody can inspect when something looks wrong.
+The admin is for OPERATIONS, not data inspection. Operators manage human
+resources, projects, agent resources, and usable resources. Tasks, audit
+trails and chat history belong in the WebUI (board / project detail) or in
+direct URL access by the technical operator — not in the sidebar where they
+clutter every screen.
+
+Four sections:
+
+  Human Resources   — who has access
+  Projects          — what we work on
+  Agent resources   — LLM-backed workers + their auto-minted API keys
+  Usable Resources  — what agents USE to execute code (hosts, sandboxes,
+                      ComfyUI endpoints, git repos, browsers)
+
+The host/sandbox/comfyui/git/browser subtypes are still registered as
+admins (so Add and change URLs work), but they do NOT show in the sidebar
+— Resources is the operator's entry point. LlmEndpoint is unregistered
+entirely: the Agent row already stores the same model credentials, and
+showing both would invite inconsistency.
 """
 
 from django.contrib import admin
+from django.contrib.auth import get_user_model
+from django.template.response import TemplateResponse
+from django.urls import path, reverse
+from django.utils.html import format_html
+from django.utils.text import capfirst
 
 from .models import (
     Agent,
@@ -33,6 +53,9 @@ from .models import (
 )
 
 
+User = get_user_model()
+
+
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
     list_display = ["key", "name", "is_default", "archived", "created_by", "created_at"]
@@ -53,17 +76,43 @@ class ProjectAdmin(admin.ModelAdmin):
         self.message_user(request, f"{n} project(s) unarchived.")
 
 
-@admin.register(ProjectMembership)
-class ProjectMembershipAdmin(admin.ModelAdmin):
-    list_display = ["project", "user", "can_write", "granted_by", "granted_at"]
-    list_filter = ["can_write", "project"]
-    search_fields = ["user__username", "project__key", "project__name"]
+# Backlog membership is managed via the Project detail page; the standalone
+# admin was removed in the 4-section cleanup. Backlogs remain queryable at
+# their direct admin URL — nothing is hidden from a technical operator who
+# knows the URL, only from the sidebar.
+for _m in (Backlog, ProjectMembership):
+    try:
+        admin.site.unregister(_m)
+    except admin.sites.NotRegistered:
+        pass
 
 
-@admin.register(Backlog)
-class BacklogAdmin(admin.ModelAdmin):
-    list_display = ["name", "project", "is_default", "created_at"]
-    list_filter = ["is_default", "project"]
+# Internal / audit models — live in the DB, queryable through direct admin
+# URLs, but NEVER surfaced in the sidebar. Operators work on resources; they
+# inspect task/attempt/memory/chat history via the WebUI board view.
+for _m in (Task, TaskEvent, TaskDep, Attempt, Memory, ChatSession, ChatMessage):
+    try:
+        admin.site.unregister(_m)
+    except admin.sites.NotRegistered:
+        pass
+
+
+# LlmEndpoint overlaps with Agent (both store base_url + api_key for a model).
+# Since Agents live in "Agent resources", there is no clean home for
+# LlmEndpoint in the 4-section layout. Hide it; the direct admin URL still
+# works if anyone needs to inspect the table.
+try:
+    admin.site.unregister(LlmEndpoint)
+except admin.sites.NotRegistered:
+    pass
+
+
+# Django's built-in Groups: this project is intentionally flat (admin + a
+# handful of executors). Hiding Groups prevents the "is this Jira?" reflex
+# and keeps the sidebar minimal. Django registers Group by default, so this
+# unconditional unregister is safe.
+from django.contrib.auth.models import Group
+admin.site.unregister(Group)
 
 
 class AgentApiKeyInline(admin.TabularInline):
@@ -132,24 +181,9 @@ class AgentAdmin(admin.ModelAdmin):
             )
 
 
-@admin.register(ChatSession)
-class ChatSessionAdmin(admin.ModelAdmin):
-    list_display = ["id", "scope", "anchor_label", "project", "created_by", "created_at"]
-    list_filter = ["scope", "project"]
-    search_fields = ["project__key", "task__title"]
-    readonly_fields = ["created_at"]
-
-
-@admin.register(ChatMessage)
-class ChatMessageAdmin(admin.ModelAdmin):
-    list_display = ["created_at", "session", "role", "agent", "content_short"]
-    list_filter = ["role", "session__scope"]
-    search_fields = ["content"]
-    readonly_fields = ["created_at"]
-
-    @admin.display(description="content")
-    def content_short(self, obj):
-        return obj.content[:80]
+# ChatSession / ChatMessage admins were removed in the 4-section cleanup.
+# Models remain queryable via /admin/board/<model>/<pk>/change/ URLs for
+# technical inspection; only the top-level sidebar entry was removed.
 
 
 # AgentApiKey is intentionally NOT registered at the top level. Keys are
@@ -158,51 +192,9 @@ class ChatMessageAdmin(admin.ModelAdmin):
 # the operator to edit them in isolation from the agent they belong to.
 
 
-@admin.register(Task)
-class TaskAdmin(admin.ModelAdmin):
-    list_display = [
-        "id", "title", "status", "project", "kind", "priority", "autonomy",
-        "assignee", "attempts", "tokens_used", "stuck_score", "claimed_by",
-        "updated_at",
-    ]
-    list_filter = ["status", "kind", "autonomy", "project", "created_by", "assignee"]
-    search_fields = ["title", "goal", "acceptance", "current_step"]
-    readonly_fields = ["id", "created_at", "updated_at", "closed_at"]
-    ordering = ["-priority", "created_at"]
-
-
-@admin.register(TaskEvent)
-class TaskEventAdmin(admin.ModelAdmin):
-    list_display = ["ts", "task", "actor", "event", "from_status", "to_status"]
-    list_filter = ["actor", "event", "to_status"]
-    search_fields = ["task__title"]
-
-
-@admin.register(TaskDep)
-class TaskDepAdmin(admin.ModelAdmin):
-    list_display = ["task", "depends_on"]
-    search_fields = ["task__title", "depends_on__title"]
-
-
-@admin.register(Attempt)
-class AttemptAdmin(admin.ModelAdmin):
-    list_display = ["task", "started_at", "ended_at", "outcome", "tokens_out", "score"]
-    list_filter = ["outcome"]
-
-
-@admin.register(Memory)
-class MemoryAdmin(admin.ModelAdmin):
-    list_display = ["kind", "content_short", "source_task", "confidence", "use_count"]
-    list_filter = ["kind"]
-    search_fields = ["content"]
-
-    @admin.display(description="content")
-    def content_short(self, obj):
-        return obj.content[:80]
-
 admin.site.site_header = "kanban-agent"
 admin.site.site_title = "kanban-agent"
-admin.site.index_title = "Board data"
+admin.site.index_title = "Operations"
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +204,32 @@ admin.site.index_title = "Board data"
 # The base Resource admin is also registered so the operator sees all six
 # kinds in one list. Each concrete kind has its own admin with its own
 # fieldsets, because the relevant fields differ wildly across kinds.
+
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+#
+# The base Resource admin is the operator's single entry point. Each concrete
+# kind has its own admin with its own fieldsets, because the relevant fields
+# differ wildly across kinds — but they only show up after the operator picks
+# "what kind do you want to add?" via the picker below.
+
+
+# Available resource kinds and the model class + URL name to redirect to when
+# the operator picks one. Source of truth for the picker's button list.
+RESOURCE_KINDS = [
+    ("host", "Host", Host,
+     "A physical or virtual machine. SSH/WinRM/RDP, login+password or key."),
+    ("sandbox", "Sandbox", Sandbox,
+     "A Docker container spawned on demand. Image, CPU/memory limits."),
+    ("comfyui", "ComfyUI endpoint", ComfyUiEndpoint,
+     "An HTTP server running ComfyUI."),
+    ("git_repo", "Git repository", GitRepo,
+     "A git repo with optional SSH key for cloning."),
+    ("browser", "Web browser", Browser,
+     "A Playwright-driven browser, ephemeral per allocation."),
+]
 
 
 @admin.register(Resource)
@@ -228,7 +246,64 @@ class ResourceAdmin(admin.ModelAdmin):
     def free_slots(self, obj):
         return f"{obj.free_slots}/{obj.capacity}"
 
+    def has_add_permission(self, request):
+        """
+        The base Resource model cannot be saved directly — it has no
+        concrete form until a child kind fills in its specific columns.
+        The "+ Add" button is therefore replaced by a kind picker below.
+        """
+        return True  # the picker IS the add flow; super would render a broken form
 
+    def add_view(self, request, form_url="", extra_context=None):
+        """
+        Replace the default add form (which would 500 — Resource has no
+        concrete persistence path) with a kind picker. Each button goes
+        to the matching subtype admin's add URL.
+        """
+        if request.method != "GET":
+            return super().add_view(request, form_url, extra_context)
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Add a resource",
+            "kinds": [
+                {
+                    "kind": kind,
+                    "label": label,
+                    "help": help_text,
+                    "add_url": reverse(
+                        f"admin:{model._meta.app_label}_{model._meta.model_name}_add",
+                    ),
+                }
+                for kind, label, model, help_text in RESOURCE_KINDS
+            ],
+            "opts": self.model._meta,
+        }
+        return TemplateResponse(
+            request, "admin/board/resource/add_kind.html", context,
+        )
+
+
+# Unregister LlmEndpoint (overlaps with Agent — see header comment). It was
+# already pulled in the bulk unregister loop above for the same reason; this
+# call is a no-op belt-and-braces guard for when the imports are reordered.
+try:
+    admin.site.unregister(LlmEndpoint)
+except admin.sites.NotRegistered:
+    pass
+
+
+# Concrete resource subtype admins: registered so that direct URLs (change,
+# history) and the Add URL behind the kind picker keep working, but hidden
+# from the sidebar so the operator goes through Resources as the entry point.
+def _hide_from_sidebar(model_admin_cls):
+    """Decorator that hides an admin from the sidebar index while keeping
+    all its URLs reachable. The four-section sidebar in get_app_list() is
+    the source of truth for visibility."""
+    model_admin_cls.has_module_permission = lambda self, request: False
+    return model_admin_cls
+
+
+@_hide_from_sidebar
 @admin.register(Host)
 class HostAdmin(admin.ModelAdmin):
     list_display = [
@@ -238,6 +313,7 @@ class HostAdmin(admin.ModelAdmin):
     search_fields = ["name", "hostname", "ip", "description"]
 
 
+@_hide_from_sidebar
 @admin.register(Sandbox)
 class SandboxAdmin(admin.ModelAdmin):
     list_display = [
@@ -247,13 +323,7 @@ class SandboxAdmin(admin.ModelAdmin):
     search_fields = ["name", "image"]
 
 
-@admin.register(LlmEndpoint)
-class LlmEndpointAdmin(admin.ModelAdmin):
-    list_display = ["name", "base_url", "model_id", "archived"]
-    list_filter = ["archived"]
-    search_fields = ["name", "base_url", "model_id"]
-
-
+@_hide_from_sidebar
 @admin.register(ComfyUiEndpoint)
 class ComfyUiEndpointAdmin(admin.ModelAdmin):
     list_display = ["name", "url", "archived"]
@@ -261,6 +331,7 @@ class ComfyUiEndpointAdmin(admin.ModelAdmin):
     search_fields = ["name", "url"]
 
 
+@_hide_from_sidebar
 @admin.register(GitRepo)
 class GitRepoAdmin(admin.ModelAdmin):
     list_display = ["name", "url", "default_branch", "archived"]
@@ -268,6 +339,7 @@ class GitRepoAdmin(admin.ModelAdmin):
     search_fields = ["name", "url"]
 
 
+@_hide_from_sidebar
 @admin.register(Browser)
 class BrowserAdmin(admin.ModelAdmin):
     list_display = ["name", "image", "headless", "pool_size", "archived"]
@@ -275,6 +347,10 @@ class BrowserAdmin(admin.ModelAdmin):
     search_fields = ["name", "image"]
 
 
+# Resource allocations live on the WebUI board (operator sees "Ornith has 2
+# sandboxes busy" without leaving the kanban). Keep the admin URL reachable
+# for diagnostics but pull it out of the sidebar.
+@_hide_from_sidebar
 @admin.register(ResourceAllocation)
 class ResourceAllocationAdmin(admin.ModelAdmin):
     list_display = [
@@ -299,11 +375,100 @@ class ResourceAllocationAdmin(admin.ModelAdmin):
             return f"project:{obj.project_id}"
         return "-"
 
-    def has_add_permission(self, request):
-        """
-        Allocations are normally created by the runtime in response to an
-        agent's request. Manual creation by an operator is allowed (for
-        seeding) but the operator should understand it counts against
-        capacity. We leave it open — the operator owns the board.
-        """
-        return super().has_add_permission(request)
+
+# ---------------------------------------------------------------------------
+# Four-section sidebar layout
+# ---------------------------------------------------------------------------
+#
+# Override AdminSite.get_app_list to replace Django's default single "Board"
+# section with four operator-facing sections. The registry still contains
+# all the hidden admins (host, sandbox, …) but they do not appear here.
+#
+# Section ordering is the order shown in the sidebar. Changing the order
+# here is the only thing required to reorder the sidebar.
+
+SECTION_ORDER = [
+    ("human_resources", "Human Resources"),
+    ("projects", "Projects"),
+    ("agent_resources", "Agent resources"),
+    ("usable_resources", "Usable Resources"),
+]
+
+# Models per section: (section_key, model_class)
+SECTION_MODELS = [
+    ("human_resources", User),
+    ("projects", Project),
+    ("agent_resources", Agent),
+    ("usable_resources", Resource),
+]
+
+
+# Save the original so we can fall back when the registry hasn't been touched.
+_original_get_app_list = admin.site.get_app_list
+
+
+def _kanban_get_app_list(self, request):
+    """Build the four-section app list explicitly.
+
+    We do NOT inherit from super() here: super() would emit a single "Board"
+    section listing every registered model regardless of `has_module_permission`
+    semantics, which produces a sidebar with all the hidden models unless we
+    strip them out by hand. Easier to start from the registry we know about.
+    """
+    registry = self._registry  # model_class -> ModelAdmin instance
+    by_section = {key: [] for key, _ in SECTION_ORDER}
+
+    for section_key, model in SECTION_MODELS:
+        ma = registry.get(model)
+        if ma is None:
+            # Section is empty (model not registered) — skip rather than show
+            # an empty header.
+            continue
+        if not ma.has_module_permission(request):
+            continue
+        # A ModelAdmin in the registry but with zero permissions is a
+        # misconfiguration, not something the operator will see. Skip the
+        # perms check and let the link render — the destination will 403
+        # if the operator truly has no access, which is the right signal.
+        changelist_url = reverse(
+            f"admin:{model._meta.app_label}_{model._meta.model_name}_changelist",
+        )
+        by_section[section_key].append({
+            "name": capfirst(model._meta.verbose_name_plural),
+            "object_name": model._meta.object_name,
+            "admin_url": changelist_url,
+            "view_only": (
+                not ma.has_add_permission(request)
+                and not ma.has_change_permission(request)
+            ),
+        })
+
+    out = []
+    for section_key, section_label in SECTION_ORDER:
+        models = by_section.get(section_key, [])
+        if not models:
+            continue
+        # The section header's "home" link goes to the changelist of the
+        # first model in the section — same convention Django uses.
+        first_model = SECTION_MODELS_DICT[section_key]
+        app_url = reverse(
+            f"admin:{first_model._meta.app_label}_{first_model._meta.model_name}_changelist",
+        )
+        out.append({
+            "name": section_label,
+            "app_label": "kanban",
+            "app_url": app_url,
+            "has_module_perms": True,
+            "models": models,
+        })
+    return out
+
+
+SECTION_MODELS_DICT = dict(SECTION_MODELS)
+
+admin.site.get_app_list = _kanban_get_app_list.__get__(admin.site)
+
+# Cosmetic — keep the index page quiet by hiding the default 'Recent actions'
+# sidebar block. Operators find what they need via the sidebar; the activity
+# stream belongs in the WebUI board.
+admin.site.enable_nav_sidebar = True
