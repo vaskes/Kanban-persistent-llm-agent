@@ -729,3 +729,373 @@ class ChatMessage(models.Model):
 
     def __str__(self) -> str:
         return f"{self.role}: {self.content[:50]}"
+
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+#
+# A Resource is a system-wide, finite thing that a task or project can claim.
+# Six concrete kinds; one parent table; multi-table inheritance so a single
+# FK can refer to any of them without discriminator-tag games.
+#
+# Resources are defined globally — there is no project_id on Resource. A
+# resource either exists for the whole fleet or doesn't. Visibility / access
+# to a resource is gated by what holds an allocation, not by who registered
+# it; the operator owns registration.
+#
+# Persistent resources exist forever and have capacity 1: the host is THE host,
+# the LLM endpoint is THE endpoint. Ephemeral resources are templates — they
+# have a pool size, and each allocation spawns an instance from the template.
+# The instance_id on ResourceAllocation is what links a granted slot to the
+# concrete thing the agent talks to.
+
+
+def _new_resource_id() -> str:
+    return _uuid()
+
+
+class ResourceKind(models.TextChoices):
+    HOST = "host", "Host (physical or VM)"
+    SANDBOX = "sandbox", "Docker sandbox"
+    LLM_ENDPOINT = "llm_endpoint", "LLM endpoint"
+    COMFYUI = "comfyui", "ComfyUI endpoint"
+    GIT_REPO = "git_repo", "Git repository"
+    BROWSER = "browser", "Web browser (Playwright)"
+
+
+class ResourceLifetime(models.TextChoices):
+    PERSISTENT = "persistent", "Persistent — exists always"
+    EPHEMERAL = "ephemeral", "Ephemeral — spawned on allocation"
+
+
+class Resource(models.Model):
+    """
+    Parent row for every concrete resource. Concrete children (Host, Sandbox,
+    …) live in their own tables joined on the primary key.
+
+    The parent exists so ResourceAllocation can FK to a single table and
+    query "every resource, regardless of kind" without a UNION.
+    """
+
+    id = models.CharField(
+        primary_key=True, max_length=32,
+        default=_new_resource_id, editable=False,
+    )
+    name = models.CharField(max_length=80, unique=True)
+    kind = models.CharField(max_length=24, choices=ResourceKind.choices)
+    lifetime = models.CharField(
+        max_length=16,
+        choices=ResourceLifetime.choices,
+        default=ResourceLifetime.PERSISTENT,
+    )
+    description = models.TextField(blank=True, default="")
+    # Max concurrent allocations. 1 for most persistent kinds; >1 for
+    # ephemeral pools (e.g. 4 browser containers).
+    capacity = models.PositiveIntegerField(default=1)
+    # When False the resource is hidden from new allocations but kept for
+    # historical reference. We do not hard-delete resources that any
+    # allocation ever pointed at.
+    archived = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "resources"
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return f"{self.name} [{self.kind}]"
+
+    @property
+    def is_persistent(self) -> bool:
+        return self.lifetime == ResourceLifetime.PERSISTENT
+
+    @property
+    def is_ephemeral(self) -> bool:
+        return self.lifetime == ResourceLifetime.EPHEMERAL
+
+    @property
+    def active_allocations(self):
+        return self.allocations.filter(status=ResourceAllocation.Status.GRANTED)
+
+    @property
+    def free_slots(self) -> int:
+        used = self.active_allocations.count()
+        return max(0, self.capacity - used)
+
+    @property
+    def is_full(self) -> bool:
+        return self.free_slots == 0
+
+    def set_secret(self, field_name: str, plaintext: str) -> None:
+        """Encrypt and store a secret on one of the resource's credential fields.
+
+        Allowed field names are exactly the *_cipher attributes on the
+        concrete children; passing anything else raises ValueError so a typo
+        cannot silently store plaintext.
+        """
+        from .crypto import encrypt_secret
+        if not field_name.endswith("_cipher"):
+            raise ValueError(f"refusing to write plaintext to {field_name!r}")
+        if not hasattr(self, field_name):
+            raise ValueError(f"no such field: {field_name}")
+        setattr(self, field_name, encrypt_secret(plaintext) if plaintext else "")
+
+    def get_secret(self, field_name: str) -> str:
+        from .crypto import decrypt_secret
+        if not field_name.endswith("_cipher"):
+            raise ValueError(f"refusing to read plaintext from {field_name!r}")
+        if not hasattr(self, field_name):
+            raise ValueError(f"no such field: {field_name}")
+        cipher = getattr(self, field_name) or ""
+        return decrypt_secret(cipher)
+
+
+# ---------------------------------------------------------------------------
+# Concrete resource kinds — each in its own table joined to Resource on pk.
+# ---------------------------------------------------------------------------
+
+
+class Host(Resource):
+    """
+    A physical or virtual machine the agent can SSH into.
+
+    Credentials are stored encrypted: either an SSH key (preferred) OR a
+    login/password pair, never both.
+    """
+
+    os_type = models.CharField(
+        max_length=16,
+        choices=[("linux", "Linux"), ("windows", "Windows")],
+        default="linux",
+    )
+    hostname = models.CharField(max_length=200, blank=True, default="")
+    ip = models.CharField(max_length=64, blank=True, default="")
+    proto = models.CharField(
+        max_length=16,
+        choices=[("ssh", "SSH"), ("winrm", "WinRM"), ("rdp", "RDP")],
+        default="ssh",
+    )
+    port = models.PositiveIntegerField(null=True, blank=True)
+    ssh_key_cipher = models.TextField(blank=True, default="")
+    login = models.CharField(max_length=80, blank=True, default="")
+    password_cipher = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "resources_host"
+
+    def __str__(self) -> str:
+        target = self.ip or self.hostname or "(no target)"
+        return f"host:{self.name} → {target}"
+
+    def save(self, *args, **kwargs):
+        self.kind = ResourceKind.HOST
+        return super().save(*args, **kwargs)
+
+
+class Sandbox(Resource):
+    """
+    A Docker container spawned from an image, freed when released.
+
+    The image, CPU/memory limits and connection template describe what
+    gets created when an allocation is granted. The actual docker
+    plumbing is the runtime's job; the data here is the contract.
+    """
+
+    os_type = models.CharField(
+        max_length=16,
+        choices=[("linux", "Linux"), ("windows", "Windows")],
+        default="linux",
+    )
+    image = models.CharField(max_length=200, default="ubuntu:22.04")
+    cpu_limit = models.FloatField(null=True, blank=True)
+    memory_limit_mb = models.PositiveIntegerField(null=True, blank=True)
+    # Connection details for the spawned container — same shape as Host.
+    hostname = models.CharField(max_length=200, blank=True, default="")
+    ip = models.CharField(max_length=64, blank=True, default="")
+    proto = models.CharField(max_length=16, default="ssh")
+    port = models.PositiveIntegerField(null=True, blank=True)
+    ssh_key_cipher = models.TextField(blank=True, default="")
+    login = models.CharField(max_length=80, blank=True, default="")
+    password_cipher = models.TextField(blank=True, default="")
+    # Pool size — how many containers can run at once. Defaults to capacity
+    # at creation but kept as its own column so the two meanings do not blur.
+    pool_size = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        db_table = "resources_sandbox"
+
+    def save(self, *args, **kwargs):
+        # capacity == pool_size for ephemeral sandboxes; surface that as a
+        # single field the operator thinks about, not two they must keep in sync.
+        # pool_size is a PositiveIntegerField with default 1, so the copy is
+        # unconditional.
+        self.capacity = self.pool_size
+        self.kind = ResourceKind.SANDBOX
+        self.lifetime = ResourceLifetime.EPHEMERAL
+        return super().save(*args, **kwargs)
+
+
+class LlmEndpoint(Resource):
+    """An OpenAI-compatible model server: base URL + model id + Bearer key."""
+
+    base_url = models.CharField(max_length=300)
+    model_id = models.CharField(max_length=200, blank=True, default="")
+    api_key_cipher = models.TextField(blank=True, default="")
+    max_tokens = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = "resources_llm_endpoint"
+
+    def __str__(self) -> str:
+        return f"llm:{self.name} → {self.base_url}"
+
+    def save(self, *args, **kwargs):
+        self.kind = ResourceKind.LLM_ENDPOINT
+        return super().save(*args, **kwargs)
+
+
+class ComfyUiEndpoint(Resource):
+    """A ComfyUI HTTP server reachable at url. Optional API key."""
+
+    url = models.CharField(max_length=300)
+    api_key_cipher = models.TextField(blank=True, default="")
+    workflow_timeout_seconds = models.PositiveIntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = "resources_comfyui"
+
+    def __str__(self) -> str:
+        return f"comfyui:{self.name} → {self.url}"
+
+    def save(self, *args, **kwargs):
+        self.kind = ResourceKind.COMFYUI
+        return super().save(*args, **kwargs)
+
+
+class GitRepo(Resource):
+    """A git repository the agent can clone. SSH key is optional."""
+
+    url = models.CharField(max_length=500)
+    default_branch = models.CharField(max_length=120, blank=True, default="main")
+    ssh_key_cipher = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "resources_git_repo"
+
+    def __str__(self) -> str:
+        return f"git:{self.name} → {self.url}"
+
+    def save(self, *args, **kwargs):
+        self.kind = ResourceKind.GIT_REPO
+        return super().save(*args, **kwargs)
+
+
+class Browser(Resource):
+    """
+    A Playwright-driven web browser. Always ephemeral — every allocation
+    gets its own container.
+    """
+
+    image = models.CharField(
+        max_length=200,
+        default="mcr.microsoft.com/playwright:v1.48.0-jammy",
+    )
+    headless = models.BooleanField(default=True)
+    pool_size = models.PositiveIntegerField(default=2)
+
+    class Meta:
+        db_table = "resources_browser"
+
+    def save(self, *args, **kwargs):
+        self.capacity = self.pool_size
+        # Browsers are always ephemeral; refuse a persistent override.
+        self.lifetime = ResourceLifetime.EPHEMERAL
+        self.kind = ResourceKind.BROWSER
+        return super().save(*args, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Allocation — a task or project's claim on a resource
+# ---------------------------------------------------------------------------
+
+
+class ResourceAllocation(models.Model):
+    """
+    A task or project's claim on a resource.
+
+    Either task OR project is set (not both, not neither). The constraint is
+    enforced in clean(); the schema is permissive because Django can't
+    express XOR constraints. Agent is optional metadata — the agent who
+    asked for the allocation, if it was a model-driven request.
+    """
+
+    class Status(models.TextChoices):
+        REQUESTED = "requested", "Requested"
+        GRANTED = "granted", "Granted"
+        RELEASED = "released", "Released"
+        FAILED = "failed", "Failed"
+
+    id = models.CharField(
+        primary_key=True, max_length=32,
+        default=_new_resource_id, editable=False,
+    )
+    resource = models.ForeignKey(
+        Resource, on_delete=models.PROTECT, related_name="allocations",
+    )
+    task = models.ForeignKey(
+        "Task", on_delete=models.CASCADE,
+        null=True, blank=True, related_name="resource_allocations",
+    )
+    project = models.ForeignKey(
+        "Project", on_delete=models.CASCADE,
+        null=True, blank=True, related_name="resource_allocations",
+    )
+    agent = models.ForeignKey(
+        "Agent", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="resource_allocations",
+    )
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.REQUESTED,
+    )
+    requested_at = models.DateTimeField(auto_now_add=True)
+    granted_at = models.DateTimeField(null=True, blank=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+    # For ephemeral resources: the spawned instance. For Docker that's a
+    # container ID; for a browser it's a session id; for persistent
+    # resources it stays empty.
+    instance_id = models.CharField(max_length=200, blank=True, default="")
+    instance_endpoint = models.CharField(max_length=300, blank=True, default="")
+    error = models.TextField(blank=True, default="")
+    note = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "resource_allocations"
+        ordering = ["-requested_at"]
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["resource", "status"]),
+        ]
+
+    def __str__(self) -> str:
+        owner = self.task_id or self.project_id or "-"
+        return f"{self.resource_id} → {owner} [{self.status}]"
+
+    @property
+    def is_active(self) -> bool:
+        return self.status == self.Status.GRANTED
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        # Exactly one of (task, project) must be set. Both empty leaves the
+        # allocation orphaned; both set is ambiguous — the agent cannot tell
+        # whether this is a per-task override or a project-level grant.
+        if bool(self.task_id) == bool(self.project_id):
+            errors["__all__"] = (
+                "exactly one of task or project must be set"
+            )
+        if errors:
+            from django.core.exceptions import ValidationError
+            raise ValidationError(errors)

@@ -14,11 +14,19 @@ from .models import (
     AgentApiKey,
     Attempt,
     Backlog,
+    Browser,
     ChatMessage,
     ChatSession,
+    ComfyUiEndpoint,
+    GitRepo,
+    Host,
+    LlmEndpoint,
     Memory,
     Project,
     ProjectMembership,
+    Resource,
+    ResourceAllocation,
+    Sandbox,
     Task,
     TaskDep,
     TaskEvent,
@@ -173,3 +181,107 @@ class MemoryAdmin(admin.ModelAdmin):
 admin.site.site_header = "kanban-agent"
 admin.site.site_title = "kanban-agent"
 admin.site.index_title = "Board data"
+
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+#
+# The base Resource admin is also registered so the operator sees all six
+# kinds in one list. Each concrete kind has its own admin with its own
+# fieldsets, because the relevant fields differ wildly across kinds.
+
+
+@admin.register(Resource)
+class ResourceAdmin(admin.ModelAdmin):
+    list_display = [
+        "name", "kind", "lifetime", "capacity",
+        "free_slots", "archived", "updated_at",
+    ]
+    list_filter = ["kind", "lifetime", "archived"]
+    search_fields = ["name", "description"]
+    readonly_fields = ["created_at", "updated_at"]
+
+    @admin.display(description="free")
+    def free_slots(self, obj):
+        return f"{obj.free_slots}/{obj.capacity}"
+
+
+@admin.register(Host)
+class HostAdmin(admin.ModelAdmin):
+    list_display = [
+        "name", "os_type", "hostname", "ip", "proto", "port", "archived",
+    ]
+    list_filter = ["os_type", "proto", "archived"]
+    search_fields = ["name", "hostname", "ip", "description"]
+
+
+@admin.register(Sandbox)
+class SandboxAdmin(admin.ModelAdmin):
+    list_display = [
+        "name", "os_type", "image", "pool_size", "free_slots", "archived",
+    ]
+    list_filter = ["os_type", "archived"]
+    search_fields = ["name", "image"]
+
+
+@admin.register(LlmEndpoint)
+class LlmEndpointAdmin(admin.ModelAdmin):
+    list_display = ["name", "base_url", "model_id", "archived"]
+    list_filter = ["archived"]
+    search_fields = ["name", "base_url", "model_id"]
+
+
+@admin.register(ComfyUiEndpoint)
+class ComfyUiEndpointAdmin(admin.ModelAdmin):
+    list_display = ["name", "url", "archived"]
+    list_filter = ["archived"]
+    search_fields = ["name", "url"]
+
+
+@admin.register(GitRepo)
+class GitRepoAdmin(admin.ModelAdmin):
+    list_display = ["name", "url", "default_branch", "archived"]
+    list_filter = ["archived"]
+    search_fields = ["name", "url"]
+
+
+@admin.register(Browser)
+class BrowserAdmin(admin.ModelAdmin):
+    list_display = ["name", "image", "headless", "pool_size", "archived"]
+    list_filter = ["headless", "archived"]
+    search_fields = ["name", "image"]
+
+
+@admin.register(ResourceAllocation)
+class ResourceAllocationAdmin(admin.ModelAdmin):
+    list_display = [
+        "resource", "owner", "status", "agent",
+        "requested_at", "granted_at", "released_at",
+    ]
+    list_filter = ["status", "resource__kind"]
+    search_fields = [
+        "resource__name", "task__title", "project__key",
+        "agent__name", "instance_id", "error",
+    ]
+    readonly_fields = [
+        "requested_at", "granted_at", "released_at",
+    ]
+    date_hierarchy = "requested_at"
+
+    @admin.display(description="owner")
+    def owner(self, obj):
+        if obj.task_id:
+            return f"task:{obj.task_id[:8]}"
+        if obj.project_id:
+            return f"project:{obj.project_id}"
+        return "-"
+
+    def has_add_permission(self, request):
+        """
+        Allocations are normally created by the runtime in response to an
+        agent's request. Manual creation by an operator is allowed (for
+        seeding) but the operator should understand it counts against
+        capacity. We leave it open — the operator owns the board.
+        """
+        return super().has_add_permission(request)
