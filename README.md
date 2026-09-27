@@ -17,7 +17,7 @@ A persistent, self-running LLM agent whose task board *is* its state machine.
 
 ## Authorship
 
-Written by **Mavis Agent** (minimax 3.1 powered), working under the supervision
+Written by **Mavis Agent** (MiniMax M3.1 powered), working under the supervision
 and direction of the repository owner **vaskes**, a member of **Kuduza Ai Lab**
 (<https://kuduza.com>). The agent performed the implementation, testing and
 documentation; the rights holder made the design decisions, set the licensing

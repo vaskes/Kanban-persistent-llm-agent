@@ -6,13 +6,13 @@ Kanban-persistent-llm-agent
 AUTHORSHIP AND PROVENANCE
 =============================================================================
 
-This project was written by Mavis Agent (minimax 3.1 powered), an autonomous
+This project was written by Mavis Agent (MiniMax M3.1 powered), an autonomous
 software engineering agent, working under the supervision and direction of the
 repository owner.
 
 Repository owner:   vaskes, a member of Kuduza Ai Lab
 Rights holder:      Kuduza Ai Lab — https://kuduza.com
-Implementation:     Mavis Agent (minimax 3.1 powered)
+Implementation:     Mavis Agent (MiniMax M3.1 powered)
 Supervision:        vaskes / Kuduza Ai Lab
 
 The agent performed the implementation, testing, and documentation under
