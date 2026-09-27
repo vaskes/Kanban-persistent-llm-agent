@@ -1,0 +1,6 @@
+# Postgres runs as a plain docker container managed by hand, not a unit.
+# Kept here as documentation of the exact invocation.
+#   docker run -d --name kanban-pg \
+#     -e POSTGRES_USER=kanban -e POSTGRES_PASSWORD=kanban -e POSTGRES_DB=kanban \
+#     -p 127.0.0.1:5433:5432 -v kanban-pgdata:/var/lib/postgresql/data \
+#     pgvector/pgvector:pg16

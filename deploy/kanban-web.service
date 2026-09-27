@@ -1,0 +1,17 @@
+[Unit]
+Description=kanban-agent web (Django/HTMX board + admin)
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=exec
+User=git
+WorkingDirectory=/opt/mavis-agent/kanban-agent
+EnvironmentFile=/opt/mavis-agent/kanban-agent/.env
+ExecStart=/opt/mavis-agent/kanban-agent/.venv/bin/gunicorn core.wsgi:application \
+    --bind 127.0.0.1:8901 --workers 3 --timeout 60
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
