@@ -66,12 +66,31 @@ class BacklogAdmin(admin.ModelAdmin):
     list_filter = ["is_default", "project"]
 
 
+class AgentApiKeyInline(admin.TabularInline):
+    """
+    API keys belong to agents — auto-minted by `register_agent` on first
+    creation, rotated via the `--rotate-key` flag. Showing them inline on the
+    agent page means the admin does not need a separate screen to see who has
+    access; the top-level "Agent api keys" entry is intentionally absent.
+
+    `secret_hash` is the only thing the DB has — plaintext is gone the moment
+    the command line scrolls. Showing the prefix is enough to recognise a
+    key in logs.
+    """
+    model = AgentApiKey
+    extra = 0
+    fields = ["prefix", "scope", "label", "is_active",
+              "user", "last_used_at", "use_count", "created_at"]
+    readonly_fields = ["prefix", "last_used_at", "use_count", "created_at"]
+    autocomplete_fields = ["user"]
+
+
 @admin.register(Agent)
 class AgentAdmin(admin.ModelAdmin):
     list_display = [
         "name", "kind", "model_provider", "model_name",
         "status", "model_reachable", "model_checked_at",
-        "last_seen_at", "model_base_url",
+        "last_seen_at", "active_api_keys", "model_base_url",
     ]
     list_filter = ["kind", "model_provider", "model_check_ok"]
     search_fields = ["name", "model_base_url", "base_url", "note", "model_check_error"]
@@ -80,6 +99,7 @@ class AgentAdmin(admin.ModelAdmin):
         "model_checked_at", "model_check_ok", "model_check_error",
     ]
     actions = ["probe_reachability"]
+    inlines = [AgentApiKeyInline]
 
     @admin.display(description="status")
     def status(self, obj):
@@ -88,6 +108,10 @@ class AgentAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="model reachable")
     def model_reachable(self, obj):
         return obj.model_reachable
+
+    @admin.display(description="active keys")
+    def active_api_keys(self, obj):
+        return obj.api_keys.filter(is_active=True).count()
 
     @admin.action(description="Probe model reachability now")
     def probe_reachability(self, request, queryset):
@@ -128,12 +152,10 @@ class ChatMessageAdmin(admin.ModelAdmin):
         return obj.content[:80]
 
 
-@admin.register(AgentApiKey)
-class AgentApiKeyAdmin(admin.ModelAdmin):
-    list_display = ["prefix", "label", "scope", "user", "is_active", "use_count", "last_used_at"]
-    list_filter = ["scope", "is_active"]
-    search_fields = ["prefix", "label", "user__username"]
-    readonly_fields = ["prefix", "secret_hash", "created_at", "last_used_at", "use_count"]
+# AgentApiKey is intentionally NOT registered at the top level. Keys are
+# minted by the admin via `manage.py register_agent --rotate-key` and live
+# inline on the Agent page; showing them as a separate changelist invites
+# the operator to edit them in isolation from the agent they belong to.
 
 
 @admin.register(Task)

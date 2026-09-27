@@ -321,9 +321,19 @@ class AgentApiKey(models.Model):
     secret_hash = models.CharField(max_length=64, db_index=True)
     label = models.CharField(max_length=120, blank=True, default="")
     scope = models.CharField(max_length=16, choices=Scope.choices, default=Scope.WRITE)
+    # The account this key acts as. Nullable so a key can belong purely to
+    # an Agent (auto-minted on agent registration) — in that case permissions
+    # are derived from the agent's other relationships. When both are set,
+    # user wins, because the existing permission helpers are user-keyed.
     user = models.ForeignKey(
-        "auth.User", on_delete=models.CASCADE, related_name="api_keys",
+        "auth.User", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="api_keys",
         help_text="the account this key acts as; permissions are inherited",
+    )
+    agent = models.ForeignKey(
+        "Agent", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="api_keys",
+        help_text="the agent this key was minted for, if any",
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -342,7 +352,12 @@ class AgentApiKey(models.Model):
         return self.scope == self.Scope.WRITE
 
     def check_secret(self, secret: str) -> bool:
-        return hashlib.sha256(secret.encode()).hexdigest() == self.secret_hash
+        return self.hash_secret(secret) == self.secret_hash
+
+    @staticmethod
+    def hash_secret(secret: str) -> str:
+        """SHA-256 of the secret. Centralised so minting and matching agree."""
+        return hashlib.sha256(secret.encode()).hexdigest()
 
     def mark_used(self) -> None:
         AgentApiKey.objects.filter(pk=self.pk).update(

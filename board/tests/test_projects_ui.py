@@ -408,12 +408,22 @@ def test_non_admin_cannot_toggle_or_revoke(client, admin, member):
     "path",
     ["/admin/board/project/", "/admin/board/agent/", "/admin/board/backlog/",
      "/admin/board/projectmembership/", "/admin/board/chatsession/",
-     "/admin/board/chatmessage/", "/admin/board/agentapikey/"],
+     "/admin/board/chatmessage/"],
 )
 def test_admin_site_registers_the_whole_tree(client, admin, path):
     """Every model must be inspectable from the admin site."""
     r = _as(client, admin).get(path)
     assert r.status_code == 200, path
+
+
+def test_agent_api_keys_live_inline_on_the_agent_page(client, admin):
+    """Keys are no longer a top-level admin entry — they live under Agent."""
+    # The top-level URL must 404 (or 302 to the agent changelist).
+    r = _as(client, admin).get("/admin/board/agentapikey/")
+    assert r.status_code in (302, 404)
+    # The agent changelist must still work and include keys inline.
+    r = _as(client, admin).get("/admin/board/agent/")
+    assert r.status_code == 200
 
 
 def test_admin_index_lists_projects(client, admin):
