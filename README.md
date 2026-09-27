@@ -67,6 +67,70 @@ INBOX → BACKLOG → READY → IN_PROGRESS → REVIEW → DONE → ARCHIVED
   cumulative on purpose and only decays on real progress, so a card that has
   died five times in a row stays visible to the operator.
 
+## Where to look, and how to test it
+
+### Run it
+
+```bash
+# 1. database
+docker run -d --name kanban-pg \
+  -e POSTGRES_USER=kanban -e POSTGRES_PASSWORD=kanban -e POSTGRES_DB=kanban \
+  -p 127.0.0.1:5433:5432 -v kanban-pgdata:/var/lib/postgresql/data \
+  pgvector/pgvector:pg16
+
+# 2. app
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+cp .env.example .env          # then edit
+POSTGRES_PORT=5433 .venv/bin/python manage.py migrate
+POSTGRES_PORT=5433 .venv/bin/python manage.py createsuperuser
+POSTGRES_PORT=5433 .venv/bin/python manage.py runserver 127.0.0.1:8901
+```
+
+Or as a service — `deploy/kanban-web.service` (gunicorn, loopback only):
+
+```bash
+sudo install -m 644 deploy/kanban-web.service /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now kanban-web
+systemctl status kanban-web
+```
+
+### Where to click
+
+| URL | What is there |
+|---|---|
+| `/` | the board — all 11 columns, priority, attempt counters, stuck badges |
+| `/task/<id>/` | one card: goal, acceptance, evidence, live step, full audit trail |
+| `/reports/` | burn per status, events per actor, tokens, attempts, stuck list |
+| `/admin/` | full CRUD over tasks, attempts, events — filters, search, bulk edit |
+| `/healthz` | liveness probe |
+
+### Run the tests
+
+```bash
+.venv/bin/python -m pytest              # 127 tests
+.venv/bin/python -m pytest --cov        # 127 tests, 100% statement + branch
+bash scripts/smoke.sh                   # live HTTP checks against a running server
+```
+
+`--cov` enforces `fail_under = 90` from `.coveragerc`; the suite currently sits
+at 100%. `test_providers_http.py` starts a real local HTTP server rather than
+mocking httpx, so the OpenAI-compatible wire format is genuinely exercised.
+
+### Proving the guarantees hold
+
+The interesting tests are the negative ones — they assert a rule the operator
+depends on:
+
+```bash
+.venv/bin/python -m pytest -k "cannot or refused or exhausted or manual"
+```
+
+These cover: no acceptance means the card cannot leave the inbox; no evidence
+means it cannot reach review; `MANUAL` cards cannot be approved by an agent;
+budget caps cannot be walked past even by taking the card directly; a killed
+worker's card returns to `READY` on its own; the audit trigger fires on raw
+SQL that bypasses the application.
+
 ## Providers
 
 One abstract method, so the runtime (part 2) is written against the contract
