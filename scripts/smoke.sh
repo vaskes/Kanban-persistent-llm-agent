@@ -62,7 +62,12 @@ check_auth() {
 
 check_auth "board renders"    "$BASE/"          "Ready"
 check_auth "reports renders"  "$BASE/reports/"  "reports"
-check_auth "admin reachable"  "$BASE/admin/login/" "password"
+
+# Once a session exists, /admin/login/ redirects to the index, so checking for
+# the word "password" in its body is wrong. Check reachability instead: a
+# superuser session must get the admin index, not a login page.
+code=$(curl -s -m 5 -b "$JAR" -o /dev/null -w '%{http_code}' "$BASE/admin/" || true)
+if [ "$code" = "200" ]; then pass "admin reachable with session"; else bad "admin reachable" "got $code"; fi
 
 # --- registration must not exist ----------------------------------------
 for p in /register/ /signup/ /password_reset/; do
