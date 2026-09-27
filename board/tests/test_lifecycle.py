@@ -261,3 +261,49 @@ def test_budget_blocks_claim_but_operator_may_override():
         transition(t, Status.IN_PROGRESS, Ctx(actor=Actor.AGENT))
     transition(t, Status.IN_PROGRESS, Ctx(actor=Actor.OPERATOR))
     assert t.status == Status.IN_PROGRESS
+
+
+# --------------------------------------------------------------------------
+# lease hygiene — a released card must not look claimed
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "target", [Status.READY, Status.BLOCKED, Status.NEEDS_HUMAN]
+)
+def test_leaving_in_progress_clears_the_lease(target):
+    """
+    Ownership ends when the card leaves IN_PROGRESS.
+
+    Without this, a card the operator released still shows "claimed by ..." with
+    a stale expiry, which reads as busy when it is free — and the only record of
+    who worked on it is the audit log, where it belongs.
+    """
+    make_task()
+    got = claim("w1", lease_seconds=900)
+    assert got.claimed_by == "w1"
+
+    transition(got, target, Ctx(actor=Actor.AGENT, reason="stepped away"))
+    got.refresh_from_db()
+    assert got.claimed_by == ""
+    assert got.lease_expires_at is None
+    assert got.current_step == ""
+
+
+def test_going_to_review_also_releases_the_lease():
+    make_task()
+    got = claim("w1", lease_seconds=900)
+    transition(got, Status.REVIEW, Ctx(actor=Actor.AGENT, evidence={"ok": 1}))
+    got.refresh_from_db()
+    assert got.claimed_by == ""
+    assert got.lease_expires_at is None
+
+
+def test_audit_log_still_records_who_worked_on_it():
+    """Clearing the lease must not erase accountability."""
+    make_task()
+    got = claim("w1", lease_seconds=900)
+    transition(got, Status.READY, Ctx(actor=Actor.AGENT, reason="released"))
+    ev = got.events.filter(event="claim").first()
+    assert ev is not None
+    assert ev.payload["worker"] == "w1"

@@ -50,6 +50,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_htmx.middleware.HtmxMiddleware",
+    "board.middleware.ApiKeyMiddleware",
 ]
 
 ROOT_URLCONF = "core.urls"
@@ -89,6 +90,13 @@ DATABASES = {
         "CONN_MAX_AGE": int(env("POSTGRES_CONN_MAX_AGE", "60")),
     }
 }
+
+# API keys are resolved by a middleware rather than AUTHENTICATION_BACKENDS,
+# because the agent API does not need request.user to be populated by the
+# session machinery — it authenticates once, explicitly, per request. The board
+# itself keeps pure session auth.
+API_KEY_HEADER = "Authorization"
+API_KEY_ENABLED = env_bool("API_KEY_ENABLED", True)
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},

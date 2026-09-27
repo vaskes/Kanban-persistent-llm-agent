@@ -11,7 +11,7 @@ A persistent, self-running LLM agent whose task board *is* its state machine.
 
 | | |
 |---|---|
-| Tests | 127, **100% statement + branch coverage** |
+| Tests | 255, **100% statement + branch coverage** |
 | Board | Postgres 16 + pgvector 0.8.6 |
 | LLM | local llama.cpp / vLLM / MiniMax / Qwen behind one interface |
 
@@ -67,6 +67,27 @@ INBOX → BACKLOG → READY → IN_PROGRESS → REVIEW → DONE → ARCHIVED
   cumulative on purpose and only decays on real progress, so a card that has
   died five times in a row stays visible to the operator.
 
+## Access
+
+Two ways in, and neither reaches the other:
+
+| | Who | How |
+|---|---|---|
+| **Board UI** | the operator, in a browser | session cookie, `vaskes` / `kanbanadmin`, 14 days |
+| **Agent API** | headless workers | `Authorization: Bearer kb_…`, no browser, no session |
+
+There is no registration and no password reset — accounts are created on the
+host, and the first one on a fresh database is automatically an administrator.
+An API key's permissions are inherited from the account it is bound to, never
+widened.
+
+```bash
+python manage.py create_api_key --user worker --label "dreamline regen"
+```
+
+Full reference, including the SQL for granting admin, the endpoint table and the
+status codes a worker must handle: **[docs/ACCESS.md](docs/ACCESS.md)**.
+
 ## Where to look, and how to test it
 
 ### Run it
@@ -102,7 +123,8 @@ systemctl status kanban-web
 | `/task/<id>/` | one card: goal, acceptance, evidence, live step, full audit trail |
 | `/reports/` | burn per status, events per actor, tokens, attempts, stuck list |
 | `/admin/` | full CRUD over tasks, attempts, events — filters, search, bulk edit |
-| `/healthz` | liveness probe |
+| `/api/v1/me` | who this API key is (bearer token, no session) |
+| `/healthz` | liveness probe, no auth |
 
 ### Run the tests
 

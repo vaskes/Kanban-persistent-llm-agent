@@ -200,8 +200,25 @@ def transition(
     task.status = to
     if to in {Status.DONE, Status.FAILED, Status.CANCELLED, Status.ARCHIVED}:
         task.closed_at = timezone.now()
+    if to in {
+        Status.READY,
+        Status.BACKLOG,
+        Status.INBOX,
+        Status.BLOCKED,
+        Status.NEEDS_HUMAN,
+        Status.REVIEW,
+        Status.DONE,
+        Status.FAILED,
+        Status.CANCELLED,
+        Status.ARCHIVED,
+    }:
+        # Leaving IN_PROGRESS means nobody holds the card any more. Clearing
+        # the lease here is what keeps a released card from still displaying
+        # "claimed by ..." with a stale expiry — which the operator would read
+        # as "busy" on a card that is actually free.
         task.claimed_by = ""
         task.lease_expires_at = None
+        task.current_step = ""
     if to in {Status.READY, Status.BACKLOG, Status.INBOX, Status.REVIEW}:
         task.needs_human = False
         task.attention_reason = ""

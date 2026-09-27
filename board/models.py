@@ -14,7 +14,9 @@ Design rules:
 
 from __future__ import annotations
 
+import hashlib
 import uuid
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -275,3 +277,58 @@ class Memory(models.Model):
 
     def __str__(self) -> str:
         return f"{self.kind}: {self.content[:50]}"
+
+
+class AgentApiKey(models.Model):
+    """
+    Long-lived credential for agents and scripts.
+
+    Why this exists: an agent runs headless, with no browser and no session. It
+    needs a credential it can put in an Authorization header and forget about.
+    Session cookies are the wrong tool — they are ambient credentials, which is
+    exactly why they need CSRF protection and why a worker process holding one
+    is a liability.
+
+    Only a SHA-256 hash is stored. The plaintext is shown once at creation and
+    never again, so a database leak does not yield usable keys.
+    """
+
+    class Scope(models.TextChoices):
+        READ = "read", "Read"
+        WRITE = "write", "Read + write (claim, heartbeat, review)"
+
+    id = models.CharField(primary_key=True, max_length=32, default=_uuid, editable=False)
+    prefix = models.CharField(
+        max_length=12, unique=True, db_index=True,
+        help_text="public identifier, safe to log; the secret is never stored",
+    )
+    secret_hash = models.CharField(max_length=64, db_index=True)
+    label = models.CharField(max_length=120, blank=True, default="")
+    scope = models.CharField(max_length=16, choices=Scope.choices, default=Scope.WRITE)
+    user = models.ForeignKey(
+        "auth.User", on_delete=models.CASCADE, related_name="api_keys",
+        help_text="the account this key acts as; permissions are inherited",
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+    use_count = models.BigIntegerField(default=0)
+
+    class Meta:
+        db_table = "agent_api_keys"
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.prefix}… ({self.label or 'unlabelled'}, {self.scope})"
+
+    @property
+    def can_write(self) -> bool:
+        return self.scope == self.Scope.WRITE
+
+    def check_secret(self, secret: str) -> bool:
+        return hashlib.sha256(secret.encode()).hexdigest() == self.secret_hash
+
+    def mark_used(self) -> None:
+        AgentApiKey.objects.filter(pk=self.pk).update(
+            last_used_at=timezone.now(), use_count=self.use_count + 1
+        )
