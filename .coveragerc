@@ -1,0 +1,19 @@
+[run]
+source = board,providers,core
+omit =
+    */migrations/0*.py
+    */tests/*
+    */conftest.py
+    */__pycache__/*
+    */.venv/*
+branch = True
+
+[report]
+show_missing = True
+skip_covered = False
+fail_under = 90
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    raise NotImplementedError
+    \.\.\.

@@ -1,0 +1,131 @@
+PROPRIETARY SOFTWARE LICENSE AGREEMENT
+Copyright (c) 2026 Mikhail Ivanovich Grinchuk (vaskes)
+All rights reserved.
+
+NOTICE: This repository is PUBLICLY READABLE. It is NOT open source.
+Public visibility is not a grant of any usage right. See Section 2.
+
+=============================================================================
+1. DEFINITIONS
+=============================================================================
+
+"Software" means the source code, design, architecture, documentation,
+schematics, test suites, and all associated contents in this repository
+("Kanban-persistent-llm-agent"), including all revisions and derivatives of it.
+
+"Licensor" means the copyright holder named above.
+
+"You" means any individual or legal entity.
+
+=============================================================================
+2. GRANT OF RIGHTS — READ-ONLY
+=============================================================================
+
+The Licensor grants You a LIMITED, NON-EXCLUSIVE, NON-TRANSFERABLE,
+NON-SUBLICENSABLE, REVOCABLE license to view the Software, to read it, to
+study it, and to quote limited excerpts with attribution for the purpose of
+technical discussion, review, or criticism.
+
+That is the entire grant.
+
+=============================================================================
+3. WHAT IS NOT PERMITTED
+=============================================================================
+
+Absent prior written permission from the Licensor, You MAY NOT, whether for
+commercial, non-commercial, internal, research, educational, or personal use:
+
+  3.1 Copy, clone, fork, mirror, or otherwise reproduce the Software in whole
+      or in substantial part, except as permitted by Section 2.
+
+  3.2 Use, execute, run, deploy, or host the Software or any part of it.
+
+  3.3 Modify, adapt, fork, translate, decompile, disassemble, or create
+      derivative works based upon the Software.
+
+  3.4 Incorporate the Software, in whole or in part, into any other product,
+      project, or system, whether or not modified.
+
+  3.5 Distribute, sublicense, sell, rent, lease, lend, sublet, or otherwise
+      make the Software available to third parties.
+
+  3.6 Remove, alter, obscure, or circumvent any copyright, license, watermark,
+      or provenance notice in the Software.
+
+  3.7 Remove or work around any technical restriction, access control, or
+      license enforcement mechanism in the Software.
+
+  3.8 Use the Software, or any part of it, as input to, or as a component of,
+      any machine-learning training, fine-tuning, retrieval, embedding, or
+      dataset-creation pipeline.
+
+  3.9 Use the Software or any part of it to train, fine-tune, evaluate,
+      distill, or otherwise improve any machine-learning model, whether or not
+      the resulting model or weights are made public.
+
+  3.10 Use the Software, directly or indirectly, to develop, train, evaluate,
+      or improve any other software system, model, or dataset, except as
+      expressly permitted in writing by the Licensor.
+
+This Section 3 applies equally to commercial and non-commercial use. The
+absence of a commercial purpose does not create permission.
+
+=============================================================================
+4. NO WARRANTY
+=============================================================================
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. THE LICENSOR
+SHALL NOT BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY, WHETHER IN
+AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM, OUT OF, OR IN
+CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+=============================================================================
+5. LIMITATION OF LIABILITY
+=============================================================================
+
+IN NO EVENT SHALL THE LICENSOR BE LIABLE FOR ANY INDIRECT, SPECIAL,
+INCIDENTAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR FOR ANY LOSS OF PROFITS,
+REVENUE, DATA, OR GOODWILL, ARISING OUT OF THE USE OF, OR INABILITY TO USE,
+THE SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+=============================================================================
+6. TERMINATION
+=============================================================================
+
+Any use outside the grant in Section 2 terminates this license automatically.
+On termination, You must cease all use and destroy all copies in Your
+possession or control. Sections 4, 5, 6, and 7 survive termination.
+
+=============================================================================
+7. NO ASSIGNMENT; NO TRADEMARK LICENSE
+=============================================================================
+
+This license is personal to You and may not be assigned, sublicensed, or
+transferred. No trademark, service mark, or logo of the Licensor is granted
+here. This license grants no intellectual-property rights other than the
+limited right to view the Software under Section 2.
+
+=============================================================================
+8. OPENING EXCEPTIONS
+=============================================================================
+
+This license is not an attempt to bar lawful use. The Licensor may grant
+permission for specific uses, including commercial ones, on a case-by-case
+basis. Ask before you assume. Nothing in the absence of a denial constitutes
+permission.
+
+=============================================================================
+9. GOVERNING LAW
+=============================================================================
+
+This agreement is governed by the laws of the Russian Federation, without
+regard to conflict-of-law provisions. The Licensor's home jurisdiction courts
+have exclusive jurisdiction over any dispute arising from this agreement.
+
+=============================================================================
+10. CONTACTS
+=============================================================================
+
+Permission requests: GitHub — https://github.com/vaskes

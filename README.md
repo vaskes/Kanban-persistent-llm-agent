@@ -1,6 +1,19 @@
-# kanban-agent
+# Kanban-persistent-llm-agent
 
-Persistent agent task board. **Part 1 — task tracker core. No agent runtime yet.**
+A persistent, self-running LLM agent whose task board *is* its state machine.
+
+> **Proprietary. Publicly readable, not open source.**
+> See [LICENSE](LICENSE). Public visibility grants viewing only — no running,
+> copying, modifying, commercial use, non-commercial use, or use as ML
+> training data. Ask first.
+
+**Status: Part 1 complete — task tracker core. No agent runtime yet.**
+
+| | |
+|---|---|
+| Tests | 127, **100% statement + branch coverage** |
+| Board | Postgres 16 + pgvector 0.8.6 |
+| LLM | local llama.cpp / vLLM / MiniMax / Qwen behind one interface |
 
 The board is the state store, not a UI over some other storage. Every state
 change goes through one function, `board.state.transition()`, and every guard
