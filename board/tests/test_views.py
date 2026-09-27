@@ -82,14 +82,14 @@ def test_board_requires_login(client):
 @pytest.mark.django_db
 def test_task_detail_requires_login(client):
     t = Task.objects.create(title="secret", acceptance="x", status=Status.READY)
-    r = auth_client.get(f"/task/{t.pk}/")
+    r = client.get(f"/task/{t.pk}/")
     assert r.status_code == 302
     assert "/login/" in r["Location"]
 
 
 @pytest.mark.django_db
 def test_reports_requires_login(client):
-    r = auth_client.get("/reports/")
+    r = client.get("/reports/")
     assert r.status_code == 302
     assert "/login/" in r["Location"]
 
