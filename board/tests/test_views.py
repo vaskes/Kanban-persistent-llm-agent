@@ -30,13 +30,34 @@ def test_healthz(client):
 
 
 def test_board_renders_all_columns(auth_client):
-    Task.objects.create(title="visible", acceptance="x", status=Status.READY)
+    from board.models import Project
+    p = Project.objects.filter(is_default=True).first()
+    if p is None:
+        from board.bootstrap import ensure_default_project
+        p = ensure_default_project()
+    Task.objects.create(title="visible", acceptance="x", status=Status.READY,
+                        project=p)
     r = auth_client.get("/")
     assert r.status_code == 200
     body = r.content.decode()
     for label in ("Inbox", "Backlog", "Ready", "In progress", "Review", "Done"):
         assert label in body, f"missing column {label}"
     assert "visible" in body
+
+
+def test_board_with_no_tasks_still_renders_the_column_skeleton(auth_client):
+    """
+    An empty project must NOT show a blank page — the columns are the
+    structure the operator relies on to see where cards will land.
+    """
+    from board.bootstrap import ensure_default_project
+    p = ensure_default_project()
+    r = auth_client.get(f"/?project={p.key}")
+    assert r.status_code == 200
+    body = r.content.decode()
+    for label in ("Inbox", "Backlog", "Ready", "In progress", "Review", "Done"):
+        assert label in body, f"missing column {label}"
+    assert "no tasks yet" in body.lower()
 
 
 def test_task_detail_renders_audit_trail(auth_client):

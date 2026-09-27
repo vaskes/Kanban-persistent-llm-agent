@@ -17,15 +17,30 @@ from .models import Project, ProjectMembership, Status, Task
 @login_required
 def board(request):
     """
-    The board shows only tasks whose project the user may see.
-
-    Filtering here rather than trusting the caller is the whole point. An
-    account with no project access must see no cards — not a "no access"
-    banner sitting above a list of everyone else's work, which is what this
-    used to render.
+    The board is per-project. The caller picks a project with ?project=<key>;
+    without one we pick the first project the user is allowed to see. An
+    account with no project access sees no cards — not a header above a list
+    of someone else's work, which is what the old mixed-board view rendered.
     """
 
-    visible = permissions.tasks_visible_to(request.user)
+    visible_qs = permissions.tasks_visible_to(request.user)
+    visible_projects_qs = list(permissions.visible_projects(request.user))
+
+    current = None
+    requested = request.GET.get("project", "").strip()
+    if requested:
+        for p in visible_projects_qs:
+            if p.key == requested:
+                current = p
+                break
+    if current is None and visible_projects_qs:
+        current = visible_projects_qs[0]
+
+    if current is not None:
+        visible = visible_qs.filter(project=current)
+    else:
+        visible = visible_qs.none()
+
     counts = {
         row["status"]: row["n"]
         for row in visible.values("status").annotate(n=Count("id"))
@@ -42,14 +57,46 @@ def board(request):
         for st in Status
     ]
 
+    # Per-tab task counters come from the same scoped query, one round-trip per
+    # project — fine at this scale, and keeps the tab badge truthful (a card
+    # in a project you cannot see must never appear in another project's tab).
+    project_ids = [p.id for p in visible_projects_qs]
+    per_project_counts = {
+        row["project_id"]: row["n"]
+        for row in Task.objects.filter(project_id__in=project_ids)
+        .values("project_id")
+        .annotate(n=Count("id"))
+    }
+    tabs = [
+        {
+            "key": p.key,
+            "name": p.name,
+            "count": per_project_counts.get(p.id, 0),
+            "is_default": p.is_default,
+            "archived": p.archived,
+            "active": current is not None and p.key == current.key,
+        }
+        for p in visible_projects_qs
+    ]
+
     return render(
         request,
         "board/board.html",
         {
             "columns": columns,
+            "tabs": tabs,
+            "current": current,
+            "is_admin": permissions.user_may_create_projects(request.user),
+            "visible_total": visible.count(),
+            "members_count": (
+                current.memberships.count() if current is not None else 0
+            ),
+            "empty_in_current": (
+                current is not None and not visible.exists()
+            ),
             # "No access yet" and "an empty board" look identical otherwise,
             # and the operator would have to guess which one they are looking at.
-            "empty": not permissions.visible_projects(request.user).exists(),
+            "no_projects": not visible_projects_qs,
         },
     )
 

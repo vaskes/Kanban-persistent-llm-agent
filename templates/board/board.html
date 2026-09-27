@@ -1,8 +1,33 @@
 {% extends "board/base.html" %}
-{% block title %}Board — kanban-agent{% endblock %}
+{% block title %}{% if current %}{{ current.name }} — Board{% else %}Board{% endif %} — kanban-agent{% endblock %}
 {% block content %}
 
 <style>
+ .tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 18px}
+ .tab{padding:6px 12px;border-radius:999px;border:1px solid #2a2c33;background:#17181c;
+      color:#a9abb2;text-decoration:none;font-size:12.5px;display:inline-flex;
+      align-items:center;gap:7px}
+ .tab:hover{border-color:#3a3d46;color:#e8e8ea}
+ .tab.on{background:#1e2937;border-color:#3b82d8;color:#e8e8ea}
+ .tab .n{color:#71747d;font-variant-numeric:tabular-nums;font-size:11.5px}
+ .tab.on .n{color:#9ec0ee}
+ .tab.def::before{content:"★";color:#d3a95f;margin-right:1px}
+
+ .phead{display:flex;justify-content:space-between;align-items:flex-start;
+        gap:18px;margin:6px 0 18px;padding:18px 22px;background:#17181c;
+        border:1px solid #26272d;border-radius:9px}
+ .phead .name{font-size:22px;font-weight:600;color:#e8e8ea;margin:0 0 6px}
+ .phead .meta{font-size:12.5px;color:#8b8d94;display:flex;flex-wrap:wrap;
+              gap:14px;margin:0 0 8px}
+ .phead .meta .k{font-family:ui-monospace,Menlo,Consolas,monospace;
+                 font-size:11.5px;background:#0e0f11;padding:2px 6px;border-radius:4px;
+                 border:1px solid #26272d;color:#c8cad0}
+ .phead .meta a{color:#6ba3e8;text-decoration:none}
+ .phead .meta a:hover{text-decoration:underline}
+ .phead .desc{color:#a9abb2;font-size:13.5px;line-height:1.55;margin:4px 0 0;
+              max-width:740px}
+ .phead .actions{display:flex;gap:8px;flex-shrink:0}
+
  .cols{display:flex;gap:10px;overflow-x:auto;align-items:flex-start;padding-bottom:20px}
  .col{min-width:238px;flex:0 0 auto;background:#141519;border:1px solid #24262d;
       border-radius:8px;padding:9px}
@@ -18,9 +43,15 @@
         background:#22242a;color:#9a9da6;border:1px solid #2e3038}
  .badge.stuck{color:#d3a95f;border-color:#4a3c22}
  .badge.human{color:#f0a4a8;border-color:#5c2f33}
+
+ .empty-project{background:#17181c;border:1px dashed #2a2c33;border-radius:9px;
+                 padding:30px 22px;text-align:center;color:#8b8d94;margin:6px 0 20px}
+ .empty-project h3{color:#c8cad0;font-size:14px;margin:0 0 6px;font-weight:500}
+ .empty-project p{margin:4px 0;font-size:13px}
+ .empty-project .hint{color:#71747d;font-size:12.5px;margin-top:10px}
 </style>
 
-{% if empty %}
+{% if no_projects %}
 <div class="empty-state">
   <h2>No projects yet</h2>
   <p>Your account exists, but it has not been given access to any project.</p>
@@ -28,6 +59,56 @@
      anything appears here. Until then this board stays empty &mdash; that is
      expected, not a fault.</p>
   <p style="margin-top:20px"><a class="btn" href="/projects/">See projects</a></p>
+</div>
+{% else %}
+
+{% if tabs|length > 1 %}
+<nav class="tabs" aria-label="Projects">
+  {% for t in tabs %}
+    <a class="tab{% if t.active %} on{% endif %}{% if t.is_default %} def{% endif %}"
+       href="/?project={{ t.key }}"{% if t.active %} aria-current="page"{% endif %}>
+      {{ t.name }} <span class="n">{{ t.count }}</span>
+    </a>
+  {% endfor %}
+</nav>
+{% endif %}
+
+{% if current %}
+<header class="phead">
+  <div style="min-width:0">
+    <h1 class="name">{{ current.name }}{% if current.is_default %}
+      <span style="font-size:12px;color:#d3a95f;font-weight:500;margin-left:8px">default project</span>
+    {% endif %}{% if current.archived %}
+      <span style="font-size:12px;color:#b58a8c;font-weight:500;margin-left:8px">archived</span>
+    {% endif %}</h1>
+    <div class="meta">
+      <span class="k">{{ current.key }}</span>
+      <span>{{ visible_total }} task{{ visible_total|pluralize }}</span>
+      <span>{{ members_count }} member{{ members_count|pluralize }}</span>
+      {% if current.repo_url %}<span><a href="{{ current.repo_url }}" target="_blank" rel="noopener">repository &rarr;</a></span>{% endif %}
+    </div>
+    {% if current.description %}
+      <p class="desc">{{ current.description|linebreaksbr }}</p>
+    {% endif %}
+  </div>
+  <div class="actions">
+    <a class="btn sm" href="/projects/{{ current.key }}/">Open project</a>
+    {% if is_admin %}
+      <a class="btn sm" href="/projects/{{ current.key }}/edit/">Settings</a>
+    {% endif %}
+  </div>
+</header>
+{% endif %}
+
+{% if empty_in_current %}
+<div class="empty-project">
+  <h3>This project has no tasks yet</h3>
+  <p>The board for <strong>{{ current.name }}</strong> is empty.</p>
+  <p class="hint">Tasks belong to a backlog. An operator seeds work for agents to pick up
+     &mdash; until the first task is added, every column is empty.</p>
+  <p style="margin-top:14px">
+    <a class="btn sm" href="/projects/{{ current.key }}/">Project overview</a>
+  </p>
 </div>
 {% endif %}
 
@@ -55,4 +136,6 @@
   </div>
 {% endfor %}
 </div>
+
+{% endif %}
 {% endblock %}
