@@ -3,9 +3,9 @@
 A persistent, self-running LLM agent whose task board *is* its state machine.
 
 > **Proprietary. Publicly readable, not open source.**
-> See [LICENSE](LICENSE). Public visibility grants viewing only — no running,
-> copying, modifying, commercial use, non-commercial use, or use as ML
-> training data. Ask first.
+> © 2026 Kuduza Ai Lab — <https://kuduza.com>. See [LICENSE](LICENSE).
+> Public visibility grants viewing only — no running, copying, modifying,
+> commercial use, non-commercial use, or use as ML training data. Ask first.
 
 **Status: Part 1 complete — task tracker core. No agent runtime yet.**
 
