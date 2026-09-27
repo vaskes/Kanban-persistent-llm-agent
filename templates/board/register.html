@@ -1,0 +1,94 @@
+{% comment %}
+Registration form. Fields are written out explicitly for the same reason as
+login.html: a rendered bound field brings its own input and label, which
+produced a duplicated field the last time.
+{% endcomment %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Create an account — kanban-agent</title>
+<style>
+ :root{color-scheme:dark}
+ body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      background:#0e0f11;color:#e8e8ea;margin:0;display:flex;align-items:flex-start;
+      justify-content:center;min-height:100vh;padding:32px 20px}
+ .card{width:100%;max-width:420px;background:#17181c;border:1px solid #26272d;
+       border-radius:12px;padding:32px}
+ h1{margin:0 0 4px;font-size:20px;font-weight:600;letter-spacing:-.2px}
+ .sub{color:#8b8d94;font-size:13.5px;margin:0 0 22px}
+ label{display:block;font-size:12.5px;font-weight:500;color:#a9abb2;margin:15px 0 6px}
+ input[type=text],input[type=email],input[type=password]{width:100%;box-sizing:border-box;
+       padding:11px 12px;font-size:15px;background:#0e0f11;border:1px solid #303139;
+       border-radius:7px;color:#e8e8ea;outline:none;transition:border-color .12s,box-shadow .12s}
+ input:focus{border-color:#4a8ade;box-shadow:0 0 0 3px rgba(74,138,222,.20)}
+ .help{color:#71747d;font-size:12px;margin:6px 0 0;line-height:1.5}
+ .errs{background:#2b1518;border:1px solid #6b3034;color:#f2a9ac;padding:11px 13px;
+       border-radius:7px;margin-bottom:18px;font-size:13.5px}
+ .errs ul{margin:6px 0 0;padding-left:18px}
+ .row{font-size:12.5px;color:#e0b0b2;margin:6px 0 0}
+ button{width:100%;margin-top:22px;padding:11px;font-size:15px;font-weight:500;cursor:pointer;
+        background:#3b82d8;border:0;border-radius:7px;color:#fff}
+ button:hover{background:#4a8ade}
+ .foot{color:#7c7f88;font-size:13px;margin:20px 0 0;text-align:center}
+ .foot a{color:#6ba3e8;text-decoration:none}
+ .foot a:hover{text-decoration:underline}
+ .note{color:#71747d;font-size:12.5px;margin:22px 0 0;line-height:1.6;
+       border-top:1px solid #24252b;padding-top:16px}
+ .note b{color:#a9abb2;font-weight:500}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Create an account</h1>
+  <p class="sub">kanban-agent</p>
+
+  {% if form.non_field_errors %}
+    <div class="errs">
+      {{ form.non_field_errors }}
+      {% if form.errors %}<ul>
+        {% for field, errs in form.errors.items %}
+          {% for err in errs %}<li>{{ field }}: {{ err }}</li>{% endfor %}
+        {% endfor %}
+      </ul>{% endif %}
+    </div>
+  {% endif %}
+
+  <form method="post" action="{% url 'register' %}">
+    {% csrf_token %}
+
+    <label for="id_username">Username</label>
+    <input type="text" name="username" id="id_username" autocomplete="username"
+           autocapitalize="none" spellcheck="false" required
+           value="{{ form.username.value|default_if_none:'' }}">
+    {% for e in form.username.errors %}<p class="row">{{ e }}</p>{% endfor %}
+    <p class="help">Letters, digits and @ . + - _ only. This is your sign-in name.</p>
+
+    <label for="id_email">Email <span style="color:#71747d">(optional)</span></label>
+    <input type="email" name="email" id="id_email" autocomplete="email"
+           value="{{ form.email.value|default_if_none:'' }}">
+    {% for e in form.email.errors %}<p class="row">{{ e }}</p>{% endfor %}
+
+    <label for="id_password1">Password</label>
+    <input type="password" name="password1" id="id_password1" autocomplete="new-password" required>
+    {% for e in form.password1.errors %}<p class="row">{{ e }}</p>{% endfor %}
+
+    <label for="id_password2">Confirm password</label>
+    <input type="password" name="password2" id="id_password2" autocomplete="new-password" required>
+    {% for e in form.password2.errors %}<p class="row">{{ e }}</p>{% endfor %}
+
+    <button type="submit">Create account</button>
+  </form>
+
+  <p class="foot">Already have an account? <a href="{% url 'login' %}">Sign in</a></p>
+
+  <p class="note">
+    <b>The very first account on a new instance becomes its administrator.</b>
+    Every later account is an ordinary user.<br><br>
+    A new account can see nothing until an administrator grants it access to at
+    least one project.
+  </p>
+</div>
+</body>
+</html>

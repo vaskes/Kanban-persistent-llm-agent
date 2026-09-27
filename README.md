@@ -76,8 +76,12 @@ Two ways in, and neither reaches the other:
 | **Board UI** | the operator, in a browser | session cookie, `vaskes` / `kanbanadmin`, 14 days |
 | **Agent API** | headless workers | `Authorization: Bearer kb_…`, no browser, no session |
 
-There is no registration and no password reset — accounts are created on the
-host, and the first one on a fresh database is automatically an administrator.
+Anyone can register at `/register/`, and a new account sees **nothing** — no
+project, not even the default one — until an administrator grants it read
+access. The **first** account to register becomes the instance administrator;
+every later one is an ordinary user. There is no password reset: use
+`manage.py changepassword` at the shell.
+
 An API key's permissions are inherited from the account it is bound to, never
 widened.
 

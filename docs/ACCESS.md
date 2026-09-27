@@ -6,19 +6,31 @@ other's endpoints.
 
 ---
 
-## The first account is an administrator
+## Registration, and why the first account is an administrator
 
-On a fresh database the first account created is automatically granted
-`is_staff` and `is_superuser`. The rule fires exactly once — only when the row
-being inserted is the very first in the table — so it is a bootstrap
-convenience, not an ongoing policy. Every later account gets exactly the
-privileges its creator chose.
+Anyone can register at `/register/`. An account grants nothing: it sees no
+project, no tasks, not even the default one. It becomes useful only once an
+administrator grants it read access to something. The board shows an explicit
+"No projects yet" state rather than an empty grid, so it is obvious that this
+is an access decision and not a fault.
 
-There is **no registration** and **no password reset**. Accounts exist only
-because the operator created them.
+**The first account to register becomes the instance administrator.** The rule
+fires exactly once — only when the row being inserted is the very first in the
+table. Every later registration is an ordinary user with no access.
+
+This is a bootstrap convenience and it is a real trust boundary: whoever
+registers first on a fresh instance owns it. Do not expose a new instance to an
+untrusted network before registering yourself.
 
 ```bash
-python manage.py createsuperuser          # first run: becomes admin automatically
+python manage.py createsuperuser    # same effect, without the web flow
+```
+
+There is **no password reset**. Recovering a forgotten password is done at the
+shell:
+
+```bash
+python manage.py changepassword <username>
 ```
 
 ---
@@ -156,6 +168,11 @@ client.post(f"/api/v1/tasks/{task['id']}/review", json={
 | `404` | no such card | it was deleted or the id is wrong |
 | `409` | the state machine refused the transition | read `detail`; usually evidence is missing |
 | `400` | bad request body | fix the client |
+
+## Board login
+
+The browser UI is session-based, not key-based. Sign in at `/login/`, or
+register at `/register/`. The session lasts 14 days.
 
 `401` bodies are identical for unknown key, wrong secret and inactive key, so
 the API cannot be used to enumerate valid prefixes.

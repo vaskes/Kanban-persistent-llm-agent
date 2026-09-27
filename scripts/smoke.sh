@@ -74,10 +74,11 @@ check_auth "reports renders"  "$BASE/reports/"  "reports"
 code=$(curl -s -m 5 -b "$JAR" -o /dev/null -w '%{http_code}' "$BASE/admin/" || true)
 if [ "$code" = "200" ]; then pass "admin reachable with session"; else bad "admin reachable" "got $code"; fi
 
-# --- registration must not exist ----------------------------------------
-for p in /register/ /signup/ /password_reset/; do
-  code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE$p" || true)
-  if [ "$code" = "404" ]; then pass "no $p"; else bad "no $p" "expected 404, got $code"; fi
-done
+# --- registration exists; password recovery does not ---------------------
+code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE/register/" || true)
+if [ "$code" = "200" ]; then pass "registration available"; else bad "registration" "expected 200, got $code"; fi
+
+code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' "$BASE/password_reset/" || true)
+if [ "$code" = "404" ]; then pass "no password reset"; else bad "password reset" "expected 404, got $code"; fi
 
 if [ "$fail" -eq 0 ]; then echo "smoke: PASS"; else echo "smoke: FAIL"; exit 1; fi

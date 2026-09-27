@@ -39,6 +39,9 @@ the "next" redirect are still taken from the form object.
  .note{color:#7c7f88;font-size:12.5px;margin:22px 0 0;line-height:1.6;
        border-top:1px solid #24252b;padding-top:16px}
  .note b{color:#a9abb2;font-weight:500}
+ .foot{color:#7c7f88;font-size:13px;margin:20px 0 0;text-align:center}
+ .foot a{color:#6ba3e8;text-decoration:none}
+ .foot a:hover{text-decoration:underline}
  code{background:#22242a;padding:1px 5px;border-radius:4px;font-size:12px;
       font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 </style>
@@ -68,9 +71,11 @@ the "next" redirect are still taken from the form object.
     <button type="submit">Sign in</button>
   </form>
 
+  <p class="foot">
+    No account yet? <a href="{% url 'register' %}">Create one</a>
+  </p>
+
   <p class="note">
-    <b>There is no sign-up.</b> Accounts are created by the operator on the
-    server, so ask for credentials if you do not have a pair.<br><br>
     You stay signed in for 14 days. After that you will be asked again.
   </p>
 </div>

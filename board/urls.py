@@ -13,6 +13,7 @@ def healthz(_request):
 urlpatterns = [
     path("healthz", healthz, name="healthz"),
     path("login/", auth_views.LoginView.as_view(template_name="board/login.html"), name="login"),
+    path("register/", views.register, name="register"),
     path("logout/", auth_views.LogoutView.as_view(), name="logout"),
     path("", views.board, name="board"),
     path("task/<str:task_id>/", views.task_detail, name="task_detail"),

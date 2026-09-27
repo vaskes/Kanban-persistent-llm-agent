@@ -1,8 +1,10 @@
 """Minimal views for phase 0. The full HTMX board lands in phase 1."""
 
+from django.contrib import messages
+from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.db.models import Count
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 
 from .models import Status, Task
 
@@ -31,7 +33,18 @@ def board(request):
                 )[:50],
             }
         )
-    return render(request, "board/board.html", {"columns": columns})
+    from .permissions import visible_projects
+
+    return render(
+        request,
+        "board/board.html",
+        {
+            "columns": columns,
+            # "No access yet" and "an empty board" look identical otherwise,
+            # and the operator would have to guess which one they are looking at.
+            "empty": not visible_projects(request.user).exists(),
+        },
+    )
 
 
 @login_required
@@ -73,4 +86,41 @@ def reports(request):
                 .values("id", "title", "stuck_score")[:20]
             ),
         },
+    )
+
+
+def register(request):
+    """
+    Self-service account creation.
+
+    A new account sees nothing: no project, no tasks, no default project. It
+    becomes useful only once an administrator grants read access to something.
+    Saying so on the page is better than showing an empty board and leaving
+    the user to wonder whether they did something wrong.
+    """
+    from .forms import RegistrationForm, new_user_sees_nothing, register_user
+
+    if request.user.is_authenticated:
+        return redirect("board")
+
+    if request.method == "POST":
+        form = RegistrationForm(request.POST)
+        if form.is_valid():
+            user, is_first = register_user(form)
+            login(request, user)
+            messages.success(
+                request,
+                "Account created as an administrator. You can see every project."
+                if is_first
+                else "Account created. You will see something once an "
+                     "administrator grants you access to a project.",
+            )
+            return redirect("board")
+    else:
+        form = RegistrationForm()
+
+    return render(
+        request,
+        "board/register.html",
+        {"form": form, "sess_sees_nothing": new_user_sees_nothing},
     )

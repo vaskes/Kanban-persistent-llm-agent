@@ -139,9 +139,21 @@ def test_logout_ends_the_session(client, django_user_model):
 
 
 @pytest.mark.django_db
-def test_there_is_no_registration_path(client):
-    """No signup, no password reset — accounts are operator-created only."""
-    for path in ("/register/", "/signup/", "/accounts/signup/", "/password_reset/"):
+def test_registration_page_exists(client):
+    """Self-service registration is a requirement, not an oversight."""
+    r = client.get("/register/")
+    assert r.status_code == 200
+    assert "Create an account" in r.content.decode()
+
+
+@pytest.mark.django_db
+def test_no_password_reset_flow(client):
+    """
+    Registration exists; password recovery does not. A reset endpoint needs a
+    mail path this install does not have, and a half-working one is worse than
+    none.
+    """
+    for path in ("/password_reset/", "/password_reset/done/"):
         assert client.get(path).status_code == 404, path
 
 
@@ -179,8 +191,10 @@ def test_login_page_renders_fields_directly(client):
 @pytest.mark.django_db
 def test_login_page_is_in_english(client):
     body = client.get("/login/").content.decode()
-    for phrase in ("Sign in", "Username", "Password", "There is no sign-up"):
+    for phrase in ("Sign in", "Username", "Password", "Create one"):
         assert phrase in body, f"missing {phrase!r}"
+    # registration exists, so the page must not claim otherwise
+    assert "no sign-up" not in body.lower()
     # no Cyrillic anywhere in the user-facing chrome
     assert not any("Ѐ" <= ch <= "ӿ" for ch in body)
 

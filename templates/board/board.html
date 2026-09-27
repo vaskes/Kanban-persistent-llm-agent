@@ -9,6 +9,9 @@
  .card{background:#24242c;border:1px solid #33333f;border-radius:4px;padding:8px;margin-bottom:6px}
  .card a{color:#7cc4ff;text-decoration:none}
  .meta{font-size:11px;color:#888;margin-top:4px}
+ .empty{margin:40px auto;max-width:520px;text-align:center;color:#8b8d94}
+ .empty h2{color:#e8e8ea;font-size:17px;margin:0 0 10px}
+ .empty p{line-height:1.7;margin:8px 0}
  a.nav{color:#7cc4ff;margin-left:14px}
 </style></head><body>
 <header><b>kanban-agent</b>
@@ -19,6 +22,16 @@
    {% csrf_token %}<button class="nav" style="background:none;border:0;color:#7cc4ff;
    cursor:pointer;font:inherit;padding:0">Sign out</button></form>
 </header>
+{% if empty %}
+ <div class="empty">
+  <h2>No projects yet</h2>
+  <p>Your account exists, but it has not been given access to any project.</p>
+  <p>An administrator has to grant you read access to at least one project before
+     anything appears here. Until then this board stays empty &mdash; that is
+     expected, not a fault.</p>
+  <p><a href="/logout/">Sign out</a></p>
+ </div>
+{% endif %}
 <div class="cols">
 {% for c in columns %}
  <div class="col"><h3>{{ c.label }} ({{ c.count }})</h3>
