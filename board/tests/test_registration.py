@@ -263,3 +263,36 @@ def test_board_of_an_ordinary_member_is_not_empty(client):
     client.force_login(user)
     body = client.get("/").content.decode()
     assert "No projects yet" not in body
+
+
+# --------------------------------------------------------------------------
+# the genuine cold start
+# --------------------------------------------------------------------------
+
+
+def test_bootstrap_from_a_completely_empty_user_table(client):
+    """
+    The state this instance was actually left in: zero users, because the
+    account the first operator used was removed so the real owner could take
+    the name. Registering from here must produce an administrator.
+    """
+    assert User.objects.count() == 0
+
+    r = client.post("/register/", payload("theowner"), follow=True)
+    assert r.status_code == 200
+
+    owner = User.objects.get(username="theowner")
+    assert owner.is_superuser is True
+    assert owner.is_staff is True
+
+    # and they land somewhere useful rather than on a dead end
+    body = r.content.decode()
+    assert "No projects yet" not in body
+
+
+def test_second_account_after_a_cold_start_is_not_admin(client):
+    client.post("/register/", payload("theowner"), follow=True)
+    client.post("/logout/")
+    client.post("/register/", payload("somebody"), follow=True)
+
+    assert User.objects.get(username="somebody").is_superuser is False

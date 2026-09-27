@@ -48,9 +48,17 @@ remote access is needed; do not bind `0.0.0.0`.
 ## 4. Verify
 
 ```bash
-bash scripts/smoke.sh              # healthz, board, admin, reports
+# the suite is self-contained
 .venv/bin/python -m pytest --cov   # must report 100%
+
+# smoke needs real credentials: it checks login, board, reports and admin
+USERNAME=your-name PASSWORD=... bash scripts/smoke.sh
 ```
+
+Smoke deliberately has no default credentials. A password baked into a script
+is a password everybody who reads the repository knows, and it is how an
+account on this host ended up in a state where its owner could not sign in to
+it. It exits 2 with that instruction if they are missing.
 
 ## 5. Git
 

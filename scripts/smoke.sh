@@ -23,8 +23,18 @@ if [ -z "$BASE" ]; then
   fi
   BASE="http://${BIND:-127.0.0.1:8901}"
 fi
-USERNAME="${USERNAME:-vaskes}"
-PASSWORD="${PASSWORD:-kanbanadmin}"
+# Credentials are required, never defaulted.
+#
+# A default password baked into a script is how the account below ended up
+# with a password nobody but the script knew. Smoke needs real credentials or
+# it cannot check the half of the surface that matters.
+USERNAME="${USERNAME:-}"
+PASSWORD="${PASSWORD:-}"
+if [ -z "$USERNAME" ] || [ -z "$PASSWORD" ]; then
+  echo "smoke: USERNAME and PASSWORD must be set." >&2
+  echo "  e.g.  USERNAME=vaskes PASSWORD=... bash scripts/smoke.sh" >&2
+  exit 2
+fi
 JAR="$(mktemp)"
 trap 'rm -f "$JAR"' EXIT
 
