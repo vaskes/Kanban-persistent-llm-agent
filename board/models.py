@@ -98,6 +98,22 @@ class Task(models.Model):
     )
     created_by = models.CharField(max_length=32, default=Actor.OPERATOR)
 
+    # --- placement in the project tree ---
+    project = models.ForeignKey(
+        "Project", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="tasks",
+        help_text="null only for tasks created before projects existed",
+    )
+    backlog = models.ForeignKey(
+        "Backlog", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="tasks",
+    )
+    assignee = models.ForeignKey(
+        "Agent", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="assigned_tasks",
+        help_text="null means any agent may take it",
+    )
+
     # --- decomposition tree ---
     root_id = models.CharField(max_length=32, blank=True, default="", db_index=True)
     parent = models.ForeignKey(
@@ -332,3 +348,269 @@ class AgentApiKey(models.Model):
         AgentApiKey.objects.filter(pk=self.pk).update(
             last_used_at=timezone.now(), use_count=self.use_count + 1
         )
+
+
+# ---------------------------------------------------------------------------
+# tree:  Project  ->  Backlog  ->  Task
+# ---------------------------------------------------------------------------
+
+DEFAULT_PROJECT_KEY = "kanban-agent"
+DEFAULT_PROJECT_NAME = "kanban-agent"
+DEFAULT_PROJECT_REPO = "https://github.com/vaskes/Kanban-persistent-llm-agent"
+
+
+class Project(models.Model):
+    """
+    Top of the tree. Always contains the default project, which is this
+    repository — the work we do on the system itself lives there.
+    """
+
+    key = models.SlugField(
+        max_length=80, unique=True,
+        help_text="stable identifier used in URLs; never changes once created",
+    )
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default="")
+    repo_url = models.URLField(blank=True, default="")
+    is_default = models.BooleanField(
+        default=False,
+        help_text="the project this repository itself; cannot be deleted",
+    )
+    # Nullable on purpose: the default project is created by a data migration
+    # before any account exists, so at that moment there is genuinely no owner.
+    # on_delete=PROTECT still prevents deleting a user who created real work.
+    created_by = models.ForeignKey(
+        "auth.User", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="created_projects",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    archived = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "projects"
+        ordering = ["-is_default", "name"]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.key})"
+
+    def save(self, *args, **kwargs):
+        # The default project is the anchor of the whole tree. If it were ever
+        # renamed or re-keyed, every link and every stored chat scope pointing
+        # at it would break at once.
+        if self.is_default:
+            self.key = DEFAULT_PROJECT_KEY
+            self.name = DEFAULT_PROJECT_NAME
+        return super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        if self.is_default:
+            raise ProtectedDefaultProject(
+                "the default project cannot be deleted; archive it instead"
+            )
+        return super().delete(*args, **kwargs)
+
+
+class ProtectedDefaultProject(Exception):
+    """Raised on any attempt to remove the default project."""
+
+
+class ProjectMembership(models.Model):
+    """
+    Binary read/write access to one project.
+
+    Deliberately two levels, not a role system: the operator grants access, and
+    finer policy has not been needed. Absence of a row means no access.
+    """
+
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="memberships"
+    )
+    user = models.ForeignKey(
+        "auth.User", on_delete=models.CASCADE, related_name="project_memberships"
+    )
+    can_write = models.BooleanField(default=False)
+    granted_by = models.ForeignKey(
+        "auth.User", on_delete=models.SET_NULL, null=True, related_name="+"
+    )
+    granted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "project_memberships"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "user"], name="uniq_project_member"
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.user_id}@{self.project_id} {'rw' if self.can_write else 'ro'}"
+
+
+class Agent(models.Model):
+    """
+    A registered worker or assistant.
+
+    Several can exist. Each task may name one as its assignee, or leave it
+    unset to mean "any agent may take this".
+    """
+
+    class Status(models.TextChoices):
+        REACHABLE = "reachable", "Reachable"
+        UNREACHABLE = "unreachable", "Unreachable"
+
+    id = models.CharField(primary_key=True, max_length=32, default=_uuid, editable=False)
+    name = models.CharField(max_length=80, unique=True)
+    kind = models.CharField(
+        max_length=32,
+        choices=[("worker", "Worker"), ("assistant", "Assistant")],
+        default="worker",
+    )
+    base_url = models.CharField(
+        max_length=300, blank=True, default="",
+        help_text="where to reach it; empty means local-in-process",
+    )
+    api_key_id = models.ForeignKey(
+        "AgentApiKey", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="agents",
+        help_text="the credential this agent authenticates with",
+    )
+    registered_at = models.DateTimeField(auto_now_add=True)
+    last_seen_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    note = models.TextField(blank=True, default="")
+
+    REACHABLE_WINDOW_SECONDS = 120
+
+    class Meta:
+        db_table = "agents"
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return f"{self.name} [{self.status}]"
+
+    @property
+    def status(self) -> str:
+        """
+        Derived, not stored.
+
+        A status column would go stale the instant an agent stopped checking in,
+        and a stale 'reachable' is worse than no status at all.
+        """
+        if self.last_seen_at is None:
+            return self.Status.UNREACHABLE
+        age = (timezone.now() - self.last_seen_at).total_seconds()
+        if age <= self.REACHABLE_WINDOW_SECONDS:
+            return self.Status.REACHABLE
+        return self.Status.UNREACHABLE
+
+    @property
+    def is_reachable(self) -> bool:
+        return self.status == self.Status.REACHABLE
+
+    def heartbeat(self) -> None:
+        Agent.objects.filter(pk=self.pk).update(last_seen_at=timezone.now())
+
+
+class Backlog(models.Model):
+    """A named container of tasks inside a project. One default per project."""
+
+    id = models.CharField(primary_key=True, max_length=32, default=_uuid, editable=False)
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="backlogs"
+    )
+    name = models.CharField(max_length=200, default="Backlog")
+    is_default = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "backlogs"
+        ordering = ["project_id", "name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project"], condition=models.Q(is_default=True),
+                name="uniq_default_backlog_per_project",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.project.key}/{self.name}"
+
+
+class ChatScope(models.TextChoices):
+    PROJECTS = "projects", "Projects"
+    BACKLOG = "backlog", "Backlog"
+    TASK = "task", "Task"
+
+
+class ChatSession(models.Model):
+    """
+    A conversation attached to one node of the tree.
+
+    The scope decides what the agent on the other side may change and what it
+    may read. That policy lives in board.permissions, not here — this model
+    only records where the conversation is anchored.
+    """
+
+    id = models.CharField(primary_key=True, max_length=32, default=_uuid, editable=False)
+    scope = models.CharField(max_length=16, choices=ChatScope.choices)
+    project = models.ForeignKey(
+        Project, on_delete=models.CASCADE, related_name="chat_sessions"
+    )
+    backlog = models.ForeignKey(
+        Backlog, on_delete=models.CASCADE, null=True, blank=True,
+        related_name="chat_sessions",
+    )
+    task = models.ForeignKey(
+        "Task", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="chat_sessions",
+    )
+    created_by = models.ForeignKey(
+        "auth.User", on_delete=models.SET_NULL, null=True, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "chat_sessions"
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(scope=ChatScope.PROJECTS, backlog__isnull=True, task__isnull=True)
+                    | models.Q(scope=ChatScope.BACKLOG, backlog__isnull=False, task__isnull=True)
+                    | models.Q(scope=ChatScope.TASK, backlog__isnull=False, task__isnull=False)
+                ),
+                name="chat_scope_anchor_matches",
+            )
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.scope}:{self.anchor_label()}"
+
+    def anchor_label(self) -> str:
+        if self.scope == ChatScope.TASK and self.task_id:
+            return self.task.title[:50]
+        if self.scope == ChatScope.BACKLOG and self.backlog_id:
+            return f"{self.project.key}/{self.backlog.name}"
+        return f"{self.project.key} (projects)"
+
+
+class ChatMessage(models.Model):
+    id = models.CharField(primary_key=True, max_length=32, default=_uuid, editable=False)
+    session = models.ForeignKey(
+        ChatSession, on_delete=models.CASCADE, related_name="messages"
+    )
+    role = models.CharField(
+        max_length=16,
+        choices=[("user", "User"), ("agent", "Agent"), ("system", "System")],
+    )
+    agent = models.ForeignKey(
+        Agent, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    content = models.TextField()
+    tool_calls = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        db_table = "chat_messages"
+        ordering = ["created_at"]
+
+    def __str__(self) -> str:
+        return f"{self.role}: {self.content[:50]}"

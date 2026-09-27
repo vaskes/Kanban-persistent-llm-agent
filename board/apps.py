@@ -6,5 +6,7 @@ class BoardConfig(AppConfig):
     name = "board"
 
     def ready(self):
-        # registers the first-user-is-admin signal
+        # the first-user-is-admin signal
         from . import signals  # noqa: F401
+        # the "the default project must exist" system check
+        from . import bootstrap  # noqa: F401
