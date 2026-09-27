@@ -13,6 +13,7 @@ whitenoise==6.8.2
 # --- agent provider abstraction (part 1: interface + fake + local llama) ---
 httpx==0.28.1
 pydantic==2.10.4
+cryptography>=49,<51
 
 # --- tests ---
 pytest==8.3.4

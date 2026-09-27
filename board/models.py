@@ -478,6 +478,34 @@ class Agent(models.Model):
     last_seen_at = models.DateTimeField(null=True, blank=True, db_index=True)
     note = models.TextField(blank=True, default="")
 
+    # --- outbound model the agent uses (provider + endpoint + key) ---
+    # None / empty means "this agent has no LLM backend registered"; the runtime
+    # then refuses to dispatch a task to it. A row with a provider but no
+    # base_url is also invalid and is caught by clean().
+    model_provider = models.CharField(
+        max_length=32, blank=True, default="",
+        choices=[
+            ("local_llama", "Local llama.cpp server"),
+            ("local_vllm", "Local vLLM server"),
+            ("cloud", "OpenAI-compatible cloud (MiniMax, Qwen, …)"),
+        ],
+        help_text="which dialect the outbound model speaks",
+    )
+    model_name = models.CharField(
+        max_length=120, blank=True, default="",
+        help_text="model id the provider should send in API calls",
+    )
+    model_base_url = models.CharField(
+        max_length=300, blank=True, default="",
+        help_text="where the model lives; provider appends /chat/completions",
+    )
+    model_api_key_cipher = models.TextField(
+        blank=True, default="",
+        help_text="encrypted Bearer token; plaintext is never stored",
+    )
+    model_max_tokens = models.IntegerField(null=True, blank=True)
+    model_temperature = models.FloatField(null=True, blank=True)
+
     REACHABLE_WINDOW_SECONDS = 120
 
     class Meta:
@@ -505,6 +533,60 @@ class Agent(models.Model):
     @property
     def is_reachable(self) -> bool:
         return self.status == self.Status.REACHABLE
+
+    @property
+    def has_model(self) -> bool:
+        """True when this row has enough info to dispatch a prompt to a model."""
+        return bool(self.model_provider and self.model_base_url)
+
+    def model_api_key(self) -> str:
+        """Plaintext API key, decrypted. Empty if not set."""
+        from .crypto import decrypt_secret
+        return decrypt_secret(self.model_api_key_cipher) if self.model_api_key_cipher else ""
+
+    def set_model_api_key(self, plaintext: str) -> None:
+        """Encrypts and stores the key. Plaintext is never persisted."""
+        from .crypto import encrypt_secret
+        self.model_api_key_cipher = encrypt_secret(plaintext) if plaintext else ""
+
+    def provider(self):
+        """Build the AgentProvider this row declares, or raise ProviderError."""
+        from providers.base import (
+            CloudProvider, LocalLlamaProvider, ProviderError,
+        )
+        if not self.has_model:
+            raise ProviderError(f"agent {self.name!r} has no model configured")
+        key = self.model_api_key()
+        common = dict(
+            base_url=self.model_base_url,
+            api_key=key,
+            default_model=self.model_name,
+        )
+        if self.model_provider == "local_llama":
+            return LocalLlamaProvider(**common)
+        if self.model_provider == "local_vllm":
+            from providers.base import LocalVLLMProvider
+            return LocalVLLMProvider(**common)
+        if self.model_provider == "cloud":
+            return CloudProvider(
+                **common, name=f"cloud:{self.name}",
+            )
+        raise ProviderError(f"unknown model_provider {self.model_provider!r}")
+
+    def clean(self):
+        super().clean()
+        errors = {}
+        if self.model_provider and not self.model_base_url:
+            errors["model_base_url"] = (
+                "model provider is set but base_url is empty"
+            )
+        if self.model_base_url and not self.model_provider:
+            errors["model_provider"] = (
+                "base_url is set but no provider is selected"
+            )
+        if errors:
+            from django.core.exceptions import ValidationError
+            raise ValidationError(errors)
 
     def heartbeat(self) -> None:
         Agent.objects.filter(pk=self.pk).update(last_seen_at=timezone.now())
