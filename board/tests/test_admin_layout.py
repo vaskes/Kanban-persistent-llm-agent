@@ -112,10 +112,14 @@ def test_groups_model_is_not_registered():
     assert Group not in dj_admin.site._registry
 
 
-def test_llm_endpoint_is_not_registered():
-    """LlmEndpoint overlaps with Agent — Agent IS the LLM endpoint."""
+def test_llm_endpoint_is_registered_but_hidden():
+    """LlmEndpoint is a forward-looking kind (consult / delegate to a separate
+    LLM from an agent). It IS registered — the kind picker needs its add URL —
+    but hidden from the sidebar via _hide_from_sidebar."""
     from board.models import LlmEndpoint
-    assert LlmEndpoint not in dj_admin.site._registry
+    assert LlmEndpoint in dj_admin.site._registry
+    ma = dj_admin.site._registry[LlmEndpoint]
+    assert ma.has_module_permission(None) is False
 
 
 @pytest.mark.parametrize("model", [

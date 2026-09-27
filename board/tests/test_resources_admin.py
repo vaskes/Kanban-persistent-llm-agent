@@ -184,3 +184,119 @@ def test_llm_endpoint_str_includes_name_and_url():
     # build an in-memory instance without saving (unregistered = no admin)
     a = LlmEndpoint(name="x", base_url="http://y/v1", model_id="m")
     assert str(a) == "llm:x → http://y/v1"
+
+
+# --- LlmEndpoint and McpServer: the forward-looking pair -----------------
+
+
+def test_llm_endpoint_is_registered_for_picker_url_routing():
+    """LlmEndpoint is hidden from the sidebar (via _hide_from_sidebar) but
+    must be in the registry so the kind picker's add URL resolves."""
+    from board.models import LlmEndpoint
+    assert LlmEndpoint in dj_admin.site._registry
+
+
+def test_mcp_server_is_registered():
+    """McpServer is the new forward-looking kind; admin must register it."""
+    from board.models import McpServer
+    assert McpServer in dj_admin.site._registry
+
+
+def test_mcp_server_kind_is_in_resource_kind_choices():
+    from board.models import McpServer, ResourceKind
+    # The model must self-declare its kind on save.
+    m = McpServer.objects.create(
+        name="m1", url="http://localhost:9999/mcp",
+        transport="http", protocol_version="2024-11-05",
+    )
+    m.refresh_from_db()
+    assert m.kind == "mcp_server"
+    assert ResourceKind.MCP_SERVER == "mcp_server"
+
+
+def test_mcp_server_str_includes_transport_and_url():
+    from board.models import McpServer
+    s = McpServer(name="x", url="http://y/mcp", transport="http")
+    assert "mcp:x" in str(s)
+    assert "http" in str(s)
+
+
+def test_mcp_server_stdio_omits_url_in_str():
+    """For stdio transport the URL is meaningless — str() must not advertise it."""
+    from board.models import McpServer
+    s = McpServer(name="x", url="", transport="stdio")
+    s_str = str(s)
+    assert "<stdio>" in s_str or "stdio" in s_str
+    assert "http://" not in s_str
+
+
+def test_mcp_server_defaults_to_http_transport():
+    from board.models import McpServer
+    m = McpServer.objects.create(name="m")
+    assert m.transport == "http"
+    assert m.protocol_version == "2024-11-05"
+
+
+def test_mcp_server_declared_tools_defaults_to_empty_list():
+    """declared_tools must default to [] so JSONField lookups don't fail on
+    a fresh row with null vs missing."""
+    from board.models import McpServer
+    m = McpServer.objects.create(name="m")
+    assert m.declared_tools == []
+
+
+def test_mcp_server_can_store_declared_tools():
+    from board.models import McpServer
+    m = McpServer.objects.create(
+        name="fs-mcp",
+        declared_tools=["read_file", "write_file", "list_dir"],
+    )
+    m.refresh_from_db()
+    assert m.declared_tools == ["read_file", "write_file", "list_dir"]
+
+
+def test_kind_picker_lists_llm_endpoint_and_mcp_server(admin_client):
+    """The Resources picker now includes both forward-looking kinds."""
+    r = admin_client.get(reverse("admin:board_resource_add"))
+    body = r.content.decode()
+    assert "LLM endpoint" in body
+    assert "MCP server" in body
+
+
+def test_kind_picker_llm_endpoint_link_resolves(admin_client):
+    """The LLM endpoint tile links to a real add URL."""
+    r = admin_client.get(reverse("admin:board_resource_add"))
+    body = r.content.decode()
+    assert reverse("admin:board_llmendpoint_add") in body
+
+
+def test_kind_picker_mcp_server_link_resolves(admin_client):
+    r = admin_client.get(reverse("admin:board_resource_add"))
+    body = r.content.decode()
+    assert reverse("admin:board_mcpserver_add") in body
+
+
+def test_llm_endpoint_admin_changelist_renders(admin_client):
+    from board.models import LlmEndpoint
+    LlmEndpoint.objects.create(name="llm", base_url="http://x/v1", model_id="m")
+    r = admin_client.get(reverse("admin:board_llmendpoint_changelist"))
+    assert r.status_code == 200
+    assert "http://x/v1" in r.content.decode()
+
+
+def test_mcp_server_admin_changelist_renders(admin_client):
+    from board.models import McpServer
+    McpServer.objects.create(name="mcp-fs", url="http://fs.local/mcp")
+    r = admin_client.get(reverse("admin:board_mcpserver_changelist"))
+    assert r.status_code == 200
+    assert "http://fs.local/mcp" in r.content.decode()
+
+
+def test_llm_endpoint_appears_in_resources_changelist_kind_column(admin_client):
+    """The unified Resources view shows the kind column populated for LlmEndpoint."""
+    from board.models import LlmEndpoint
+    LlmEndpoint.objects.create(name="advisor", base_url="http://x/v1", model_id="m")
+    r = admin_client.get(reverse("admin:board_resource_changelist"))
+    body = r.content.decode()
+    assert "advisor" in body
+    assert "llm_endpoint" in body

@@ -41,6 +41,7 @@ from .models import (
     GitRepo,
     Host,
     LlmEndpoint,
+    McpServer,
     Memory,
     Project,
     ProjectMembership,
@@ -95,16 +96,6 @@ for _m in (Task, TaskEvent, TaskDep, Attempt, Memory, ChatSession, ChatMessage):
         admin.site.unregister(_m)
     except admin.sites.NotRegistered:
         pass
-
-
-# LlmEndpoint overlaps with Agent (both store base_url + api_key for a model).
-# Since Agents live in "Agent resources", there is no clean home for
-# LlmEndpoint in the 4-section layout. Hide it; the direct admin URL still
-# works if anyone needs to inspect the table.
-try:
-    admin.site.unregister(LlmEndpoint)
-except admin.sites.NotRegistered:
-    pass
 
 
 # Django's built-in Groups: this project is intentionally flat (admin + a
@@ -218,17 +209,24 @@ admin.site.index_title = "Operations"
 
 # Available resource kinds and the model class + URL name to redirect to when
 # the operator picks one. Source of truth for the picker's button list.
+# LlmEndpoint and McpServer are intentionally listed as 'forward-looking':
+# registered today so the operator can record what their fleet talks to,
+# but the runtime that actually uses them is part 2.
 RESOURCE_KINDS = [
     ("host", "Host", Host,
      "A physical or virtual machine. SSH/WinRM/RDP, login+password or key."),
     ("sandbox", "Sandbox", Sandbox,
      "A Docker container spawned on demand. Image, CPU/memory limits."),
+    ("llm_endpoint", "LLM endpoint", LlmEndpoint,
+     "A standalone LLM an agent can consult or delegate a subtask to."),
     ("comfyui", "ComfyUI endpoint", ComfyUiEndpoint,
      "An HTTP server running ComfyUI."),
     ("git_repo", "Git repository", GitRepo,
      "A git repo with optional SSH key for cloning."),
     ("browser", "Web browser", Browser,
      "A Playwright-driven browser, ephemeral per allocation."),
+    ("mcp_server", "MCP server", McpServer,
+     "A Model Context Protocol server that exposes tools to an agent."),
 ]
 
 
@@ -283,13 +281,10 @@ class ResourceAdmin(admin.ModelAdmin):
         )
 
 
-# Unregister LlmEndpoint (overlaps with Agent — see header comment). It was
-# already pulled in the bulk unregister loop above for the same reason; this
-# call is a no-op belt-and-braces guard for when the imports are reordered.
-try:
-    admin.site.unregister(LlmEndpoint)
-except admin.sites.NotRegistered:
-    pass
+# LlmEndpoint is registered below — it has its own admin hidden from the
+# sidebar (an operator adds it via the Resources kind picker, not via a
+# sidebar entry). It is distinct from Agent: Agent IS a worker, LlmEndpoint
+# is a tool an agent can consult or delegate a subtask to.
 
 
 # Concrete resource subtype admins: registered so that direct URLs (change,
@@ -345,6 +340,33 @@ class BrowserAdmin(admin.ModelAdmin):
     list_display = ["name", "image", "headless", "pool_size", "archived"]
     list_filter = ["headless", "archived"]
     search_fields = ["name", "image"]
+
+
+@_hide_from_sidebar
+@admin.register(LlmEndpoint)
+class LlmEndpointAdmin(admin.ModelAdmin):
+    """
+    A standalone LLM an agent can call — for consulting a bigger model or
+    delegating a subtask. Distinct from Agent: Agent IS a worker, LlmEndpoint
+    is a tool. Forward-looking — registered today, used by the runtime later.
+    """
+    list_display = ["name", "base_url", "model_id", "archived"]
+    list_filter = ["archived"]
+    search_fields = ["name", "base_url", "model_id"]
+
+
+@_hide_from_sidebar
+@admin.register(McpServer)
+class McpServerAdmin(admin.ModelAdmin):
+    """
+    A Model Context Protocol server — exposes tools to an agent at runtime.
+    Forward-looking: registered today so the operator can document what their
+    fleet talks to; the runtime that actually connects and discovers tools
+    is part 2.
+    """
+    list_display = ["name", "transport", "url", "protocol_version", "archived"]
+    list_filter = ["transport", "archived"]
+    search_fields = ["name", "url"]
 
 
 # Resource allocations live on the WebUI board (operator sees "Ornith has 2

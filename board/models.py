@@ -777,6 +777,7 @@ class ResourceKind(models.TextChoices):
     COMFYUI = "comfyui", "ComfyUI endpoint"
     GIT_REPO = "git_repo", "Git repository"
     BROWSER = "browser", "Web browser (Playwright)"
+    MCP_SERVER = "mcp_server", "MCP server (Model Context Protocol)"
 
 
 class ResourceLifetime(models.TextChoices):
@@ -1004,6 +1005,57 @@ class GitRepo(Resource):
 
     def save(self, *args, **kwargs):
         self.kind = ResourceKind.GIT_REPO
+        return super().save(*args, **kwargs)
+
+
+class McpServer(Resource):
+    """
+    A Model Context Protocol (MCP) server that exposes tools to an agent.
+
+    MCP standardises how an agent discovers and calls tools from a remote
+    process. The kanban-web treats an MCP server as a registered resource:
+    an operator adds it once with the endpoint URL, and at task-execution
+    time the worker connects to it to discover the available tool list
+    before doing anything else.
+
+    The `declared_tools` field is operator-supplied documentation — the
+    runtime still calls `/v1/tools/list` against the actual server to get
+    the canonical list, but having the operator's intent in the DB makes
+    audits and capacity reasoning possible without a live connection.
+    """
+
+    class Transport(models.TextChoices):
+        HTTP = "http", "HTTP (JSON-RPC over POST)"
+        SSE = "sse", "Server-sent events"
+        STDIO = "stdio", "stdio (a local process the worker spawns)"
+
+    url = models.CharField(
+        max_length=500, blank=True, default="",
+        help_text="HTTP/SSE endpoint URL; ignored when transport=stdio",
+    )
+    transport = models.CharField(
+        max_length=8,
+        choices=Transport.choices,
+        default=Transport.HTTP,
+    )
+    protocol_version = models.CharField(
+        max_length=20, default="2024-11-05",
+        help_text="the MCP protocol version the server speaks",
+    )
+    api_key_cipher = models.TextField(blank=True, default="")
+    declared_tools = models.JSONField(
+        default=list, blank=True,
+        help_text="tools the operator believes this server exposes",
+    )
+
+    class Meta:
+        db_table = "resources_mcp_server"
+
+    def __str__(self) -> str:
+        return f"mcp:{self.name} → {self.transport} {self.url or '<stdio>'}"
+
+    def save(self, *args, **kwargs):
+        self.kind = ResourceKind.MCP_SERVER
         return super().save(*args, **kwargs)
 
 
