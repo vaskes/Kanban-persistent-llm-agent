@@ -1,0 +1,15 @@
+<!doctype html><html><head><meta charset="utf-8"><title>{{ task.title }}</title>
+<style>body{font:14px system-ui;background:#111;color:#eee;padding:20px}
+pre{background:#1a1a20;padding:10px;border-radius:4px;overflow:auto}
+a{color:#7cc4ff}</style></head><body>
+<p><a href="/">← board</a></p>
+<h1>{{ task.title }}</h1>
+<p><b>{{ task.status }}</b> · kind {{ task.kind }} · prio {{ task.priority }} · autonomy {{ task.autonomy }}</p>
+<h3>goal</h3><pre>{{ task.goal }}</pre>
+<h3>acceptance</h3><pre>{{ task.acceptance }}</pre>
+<h3>evidence</h3><pre>{{ task.evidence }}</pre>
+<h3>step</h3><pre>{{ task.current_step }}</pre>
+<h3>events ({{ events|length }})</h3>
+<pre>{% for e in events %}{{ e.ts }} {{ e.actor }}/{{ e.event }} {{ e.from_status }}→{{ e.to_status }} {{ e.payload }}
+{% endfor %}</pre>
+</body></html>

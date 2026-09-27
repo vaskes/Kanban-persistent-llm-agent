@@ -1,0 +1,21 @@
+# --- web ---
+Django==5.1.4
+psycopg[binary]==3.2.3
+gunicorn==23.0.0
+uvicorn==0.34.0
+channels==4.2.0
+daphne==4.1.2
+
+# --- templates / static ---
+django-htmx==1.19
+whitenoise==6.8.2
+
+# --- agent provider abstraction (part 1: interface + fake + local llama) ---
+httpx==0.28.1
+pydantic==2.10.4
+
+# --- tests ---
+pytest==8.3.4
+pytest-django==4.9.0
+pytest-asyncio==0.25.0
+fakeredis==2.26.2

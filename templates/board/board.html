@@ -1,0 +1,28 @@
+<!doctype html><html><head><meta charset="utf-8">
+<title>kanban-agent board</title>
+<style>
+ body{font:14px system-ui;margin:0;background:#111;color:#eee}
+ header{padding:12px 20px;background:#1c1c22;border-bottom:1px solid #2c2c36}
+ .cols{display:flex;gap:10px;padding:12px;overflow-x:auto;align-items:flex-start}
+ .col{min-width:240px;background:#1a1a20;border:1px solid #2c2c36;border-radius:6px;padding:8px}
+ .col h3{margin:2px 4px 8px;font-size:12px;text-transform:uppercase;color:#9a9}
+ .card{background:#24242c;border:1px solid #33333f;border-radius:4px;padding:8px;margin-bottom:6px}
+ .card a{color:#7cc4ff;text-decoration:none}
+ .meta{font-size:11px;color:#888;margin-top:4px}
+ a.nav{color:#7cc4ff;margin-left:14px}
+</style></head><body>
+<header><b>kanban-agent</b>
+ <span class="nav"><a href="/admin/">admin</a></span>
+ <span class="nav"><a href="/reports/">reports</a></span>
+</header>
+<div class="cols">
+{% for c in columns %}
+ <div class="col"><h3>{{ c.label }} ({{ c.count }})</h3>
+ {% for t in c.tasks %}
+  <div class="card"><a href="/task/{{ t.id }}/">{{ t.title|truncatechars:60 }}</a>
+   <div class="meta">p{{ t.priority }} · {{ t.kind }} · att {{ t.attempts }}/{{ t.max_attempts }}{% if t.stuck_score > 0 %} · STUCK {{ t.stuck_score|floatformat:0 }}{% endif %}</div>
+  </div>
+ {% empty %}<div class="meta">—</div>{% endfor %}
+ </div>
+{% endfor %}
+</div></body></html>
