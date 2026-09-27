@@ -7,14 +7,22 @@ Requires=docker.service
 Type=exec
 User=git
 WorkingDirectory=/opt/mavis-agent/kanban-agent
+
+# systemd expands ${VAR} in ExecStart itself — there is no shell. Do NOT escape
+# the dollar sign here: `$$` reaches gunicorn as a literal and it then falls
+# back to its own default, 0.0.0.0:8000.
+Environment=BIND_ADDR=127.0.0.1:8901
 EnvironmentFile=/opt/mavis-agent/kanban-agent/.env
+
+ExecStartPre=/opt/mavis-agent/kanban-agent/scripts/preflight.sh
 ExecStart=/opt/mavis-agent/kanban-agent/.venv/bin/gunicorn core.wsgi:application \
     --bind ${BIND_ADDR} --workers 3 --timeout 60
+
 Restart=always
 RestartSec=5
-
-# loopback only by default; set BIND_ADDR=192.168.10.7:8901 to reach it from
-# the LAN. Do NOT use 0.0.0.0 — that exposes the board on every interface.
+# Report a failure instead of crash-looping quietly.
+StartLimitBurst=3
+StartLimitIntervalSec=60
 
 [Install]
 WantedBy=multi-user.target
