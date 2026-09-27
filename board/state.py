@@ -252,17 +252,28 @@ def transition(
 
 
 @transaction.atomic
-def claim(worker: str, lease_seconds: int, allowed_kinds: list[str] | None = None) -> Task | None:
+def claim(
+    worker: str,
+    lease_seconds: int,
+    allowed_kinds: list[str] | None = None,
+    project_ids: list[str] | None = None,
+) -> Task | None:
     """
     Atomically take one READY card.
 
     Uses SELECT ... FOR UPDATE SKIP LOCKED so that multiple workers can claim
     concurrently without ever blocking each other and without any explicit
     locking protocol.
+
+    `project_ids` restricts the search to projects the caller may see. None
+    means unrestricted (administrators); an empty list matches nothing, which
+    is what a user with no access must get.
     """
     qs = Task.objects.select_for_update(skip_locked=True).filter(status=Status.READY)
     if allowed_kinds:
         qs = qs.filter(kind__in=allowed_kinds)
+    if project_ids is not None:
+        qs = qs.filter(project_id__in=project_ids)
     task = qs.order_by("-priority", "created_at").first()
     if task is None:
         return None

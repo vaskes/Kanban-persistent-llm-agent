@@ -15,25 +15,32 @@ from .models import Status, Task
 
 @login_required
 def board(request):
-    columns = []
-    by_status = (
-        Task.objects.values("status")
-        .annotate(n=Count("id"))
-        .order_by()
-    )
-    counts = {row["status"]: row["n"] for row in by_status}
-    for st in Status:
-        columns.append(
-            {
-                "status": st.value,
-                "label": st.label,
-                "count": counts.get(st.value, 0),
-                "tasks": Task.objects.filter(status=st.value).order_by(
-                    "-priority", "created_at"
-                )[:50],
-            }
-        )
-    from .permissions import visible_projects
+    """
+    The board shows only tasks whose project the user may see.
+
+    Filtering here rather than trusting the caller is the whole point. An
+    account with no project access must see no cards — not a "no access"
+    banner sitting above a list of everyone else's work, which is what this
+    used to render.
+    """
+    from .permissions import tasks_visible_to, visible_projects
+
+    visible = tasks_visible_to(request.user)
+    counts = {
+        row["status"]: row["n"]
+        for row in visible.values("status").annotate(n=Count("id"))
+    }
+    columns = [
+        {
+            "status": st.value,
+            "label": st.label,
+            "count": counts.get(st.value, 0),
+            "tasks": visible.filter(status=st.value).order_by(
+                "-priority", "created_at"
+            )[:50],
+        }
+        for st in Status
+    ]
 
     return render(
         request,
@@ -49,7 +56,15 @@ def board(request):
 
 @login_required
 def task_detail(request, task_id):
-    task = get_object_or_404(Task, pk=task_id)
+    """
+    Scoped lookup, not get_object_or_404 on the raw id.
+
+    Any authenticated user could previously read any card by guessing its id,
+    including the goal, the acceptance criteria and the full audit trail.
+    """
+    from .permissions import tasks_visible_to
+
+    task = get_object_or_404(tasks_visible_to(request.user), pk=task_id)
     return render(
         request,
         "board/task_detail.html",
@@ -60,28 +75,33 @@ def task_detail(request, task_id):
 @login_required
 def reports(request):
     from .models import TaskEvent
+    from .permissions import tasks_visible_to
+
+    visible = tasks_visible_to(request.user)
+    # events follow their tasks: an event about an invisible card is itself
+    # information about a card the reader is not allowed to see
+    visible_ids = visible.values_list("id", flat=True)
 
     return render(
         request,
         "board/reports.html",
         {
             "by_status": list(
-                Task.objects.values("status").annotate(n=Count("id")).order_by("-n")
+                visible.values("status").annotate(n=Count("id")).order_by("-n")
             ),
             "by_actor": list(
-                TaskEvent.objects.values("actor").annotate(n=Count("id")).order_by("-n")
+                TaskEvent.objects.filter(task_id__in=visible_ids)
+                .values("actor")
+                .annotate(n=Count("id"))
+                .order_by("-n")
             ),
             "by_kind": list(
-                Task.objects.values("kind").annotate(n=Count("id")).order_by("-n")
+                visible.values("kind").annotate(n=Count("id")).order_by("-n")
             ),
-            "total_tokens": sum(
-                Task.objects.values_list("tokens_used", flat=True)
-            ),
-            "total_attempts": sum(
-                Task.objects.values_list("attempts", flat=True)
-            ),
+            "total_tokens": sum(visible.values_list("tokens_used", flat=True)),
+            "total_attempts": sum(visible.values_list("attempts", flat=True)),
             "stuck": list(
-                Task.objects.filter(stuck_score__gt=0)
+                visible.filter(stuck_score__gt=0)
                 .order_by("-stuck_score")
                 .values("id", "title", "stuck_score")[:20]
             ),

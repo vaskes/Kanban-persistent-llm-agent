@@ -211,3 +211,58 @@ def can_assign(agent) -> bool:
     from .models import Agent
 
     return Agent.objects.filter(pk=agent.pk).exists()
+
+
+# ---------------------------------------------------------------------------
+# task visibility — the single place this is decided
+# ---------------------------------------------------------------------------
+#
+# Everything that reads or writes a task goes through here. It used not to: the
+# board listed every card, and a task could be fetched, claimed, heartbeaten,
+# reviewed and released by its id alone. A freshly registered account with zero
+# project access could therefore read and modify the entire system.
+#
+# The rule is deliberately simple — a task is visible when its project is
+# visible — because anything subtler is a rule nobody can check by reading.
+
+
+def is_admin(user) -> bool:
+    return bool(user and getattr(user, "is_authenticated", False)
+                and (user.is_superuser or user.is_staff))
+
+
+def tasks_visible_to(user):
+    """The tasks a user may read. Admins see everything."""
+    from .models import Task
+
+    if is_admin(user):
+        return Task.objects.all()
+    if not user or not getattr(user, "is_authenticated", False):
+        return Task.objects.none()
+    return Task.objects.filter(project__in=visible_projects(user))
+
+
+def user_can_see_task(user, task) -> bool:
+    if is_admin(user):
+        return True
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    if task.project_id is None:
+        # An orphan task belongs to no project, so no membership can grant it.
+        return False
+    return user_can_see_project(user, task.project)
+
+
+def visible_project_ids(user) -> list[str] | None:
+    """
+    Project ids a user may touch, or None when the restriction does not apply.
+
+    None means "no restriction" rather than an empty list — passing an empty
+    list into a filter must match nothing, and the two cases are easy to
+    confuse. claim() needs the distinction.
+    """
+    if is_admin(user):
+        return None
+    if not user or not getattr(user, "is_authenticated", False):
+        return []
+    return list(visible_projects(user).values_list("id", flat=True))

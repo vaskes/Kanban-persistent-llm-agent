@@ -38,6 +38,36 @@ def _auth(t):
     return {"HTTP_AUTHORIZATION": f"Bearer {t}"}
 
 
+def _key_user(token):
+    from board.models import AgentApiKey
+
+    return AgentApiKey.objects.get(
+        prefix=token.split("_", 2)[1]
+    ).user
+
+
+def _grant_access(token):
+    """Give the key's account read access to the default project."""
+    from board.bootstrap import get_default_project
+    from board.models import ProjectMembership
+
+    ProjectMembership.objects.get_or_create(
+        project=get_default_project(),
+        user=_key_user(token),
+        defaults={"can_write": True},
+    )
+
+
+def place_in_default_project(**kw):
+    """Create a task inside the default project (see test_api_keys.py)."""
+    from board.bootstrap import get_default_backlog, get_default_project
+
+    p = get_default_project()
+    kw.setdefault("project", p)
+    kw.setdefault("backlog", get_default_backlog(p))
+    return Task.objects.create(**kw)
+
+
 # --------------------------------------------------------------------------
 # header extraction
 # --------------------------------------------------------------------------
@@ -163,7 +193,7 @@ def test_release_refused_when_ownership_is_gone():
     key that did the work — may release it afterwards.
     """
     token = _key()
-    t = Task.objects.create(
+    t = place_in_default_project(
         title="w", acceptance="x", status=Status.READY, autonomy="AUTO"
     )
     c = Client()
@@ -178,7 +208,10 @@ def test_release_refused_when_ownership_is_gone():
     assert t.status == Status.REVIEW
     assert t.claimed_by == ""
 
+    # A key that can see the card but holds no lease gets 403. A key that
+    # cannot see it at all gets 404, which test_task_visibility.py covers.
     other = _key()
+    _grant_access(other)
     r = c.post(f"/api/v1/tasks/{t.pk}/release", {}, **_auth(other))
     assert r.status_code == 403
     r = c.post(f"/api/v1/tasks/{t.pk}/release", {}, **_auth(token))
@@ -196,7 +229,7 @@ def test_release_answers_409_if_the_state_machine_refuses(monkeypatch):
     from board.state import TransitionError
 
     token = _key()
-    t = Task.objects.create(
+    t = place_in_default_project(
         title="w", acceptance="x", status=Status.READY, autonomy="AUTO"
     )
     c = Client()
@@ -216,7 +249,7 @@ def test_escalate_answers_409_if_the_state_machine_refuses(monkeypatch):
     from board.state import TransitionError
 
     token = _key()
-    t = Task.objects.create(
+    t = place_in_default_project(
         title="w", acceptance="x", status=Status.READY, autonomy="AUTO"
     )
     c = Client()
@@ -232,7 +265,7 @@ def test_escalate_answers_409_if_the_state_machine_refuses(monkeypatch):
 
 def test_escalate_refused_when_the_edge_does_not_exist():
     token = _key()
-    t = Task.objects.create(
+    t = place_in_default_project(
         title="w", acceptance="x", status=Status.READY, autonomy="AUTO"
     )
     # READY -> NEEDS_HUMAN is deliberately not an edge: escalation is
@@ -251,8 +284,8 @@ def test_escalate_refused_when_the_edge_does_not_exist():
 
 def test_list_filters_by_kind():
     token = _key()
-    Task.objects.create(title="a", acceptance="x", status=Status.READY, kind="ops")
-    Task.objects.create(title="b", acceptance="x", status=Status.READY, kind="code")
+    place_in_default_project(title="a", acceptance="x", status=Status.READY, kind="ops")
+    place_in_default_project(title="b", acceptance="x", status=Status.READY, kind="code")
     r = Client().get("/api/v1/tasks?kind=ops", **_auth(token))
     assert [t["title"] for t in r.json()["tasks"]] == ["a"]
 
@@ -277,7 +310,7 @@ def test_json_array_body_is_not_treated_as_an_object():
 
 def test_empty_json_body_is_tolerated():
     token = _key()
-    Task.objects.create(title="w", acceptance="x", status=Status.READY, autonomy="AUTO")
+    place_in_default_project(title="w", acceptance="x", status=Status.READY, autonomy="AUTO")
     r = Client().post(
         "/api/v1/tasks/claim", data=b"", content_type="application/json", **_auth(token)
     )
@@ -287,10 +320,10 @@ def test_empty_json_body_is_tolerated():
 
 def test_claim_accepts_kind_filter():
     token = _key()
-    Task.objects.create(
+    place_in_default_project(
         title="code", acceptance="x", status=Status.READY, kind="code", autonomy="AUTO"
     )
-    Task.objects.create(
+    place_in_default_project(
         title="ops", acceptance="x", status=Status.READY, kind="ops", autonomy="AUTO"
     )
     r = Client().post(
@@ -304,7 +337,7 @@ def test_claim_accepts_kind_filter():
 
 def test_claim_accepts_custom_lease_seconds():
     token = _key()
-    Task.objects.create(title="w", acceptance="x", status=Status.READY, autonomy="AUTO")
+    place_in_default_project(title="w", acceptance="x", status=Status.READY, autonomy="AUTO")
     r = Client().post(
         "/api/v1/tasks/claim",
         data=json.dumps({"lease_seconds": 60}),
@@ -317,7 +350,7 @@ def test_claim_accepts_custom_lease_seconds():
 
 def test_board_state_reports_needs_human_and_time():
     token = _key()
-    Task.objects.create(
+    place_in_default_project(
         title="w", acceptance="x", status=Status.NEEDS_HUMAN, needs_human=True
     )
     r = Client().get("/api/v1/board", **_auth(token))
@@ -329,8 +362,8 @@ def test_board_state_reports_needs_human_and_time():
 
 def test_full_task_json_includes_structure_and_history():
     token = _key()
-    blocker = Task.objects.create(title="b", acceptance="x", status=Status.DONE)
-    t = Task.objects.create(title="w", acceptance="x", status=Status.READY)
+    blocker = place_in_default_project(title="b", acceptance="x", status=Status.DONE)
+    t = place_in_default_project(title="w", acceptance="x", status=Status.READY)
     TaskDep.objects.create(task=t, depends_on=blocker)
     r = Client().get(f"/api/v1/tasks/{t.pk}", **_auth(token))
     body = r.json()["task"]
@@ -346,7 +379,7 @@ def test_json_content_type_with_truly_empty_body_is_tolerated():
     response, not a 500 from the parser.
     """
     token = _key()
-    Task.objects.create(title="w", acceptance="x", status=Status.READY, autonomy="AUTO")
+    place_in_default_project(title="w", acceptance="x", status=Status.READY, autonomy="AUTO")
     r = Client().post(
         "/api/v1/tasks/claim",
         data=b"",

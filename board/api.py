@@ -32,6 +32,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
+from . import permissions
 from .models import Actor, Status, Task
 from .state import Ctx, TransitionError, claim, heartbeat, transition
 
@@ -194,7 +195,8 @@ def list_tasks(request):
     key, err = _auth(request)
     if err:
         return err
-    qs = Task.objects.all()
+
+    qs = permissions.tasks_visible_to(key.user)
     status = request.GET.get("status")
     if status:
         wanted = [s.strip() for s in status.split(",") if s.strip()]
@@ -215,8 +217,11 @@ def get_task(request, task_id):
     key, err = _auth(request)
     if err:
         return err
+
+    # Scoped lookup. Fetching by raw id would let any key read any card,
+    # including one in a project its account was never granted.
     try:
-        task = Task.objects.get(pk=task_id)
+        task = permissions.tasks_visible_to(key.user).get(pk=task_id)
     except Task.DoesNotExist:
         return JsonResponse({"error": "not_found"}, status=404)
     return JsonResponse({"ok": True, "task": _task_json(task, full=True)})
@@ -228,15 +233,16 @@ def board_state(request):
     key, err = _auth(request)
     if err:
         return err
-    rows = Task.objects.values("status").annotate(n=Count("id"))
+    visible = permissions.tasks_visible_to(key.user)
+    rows = visible.values("status").annotate(n=Count("id"))
     return JsonResponse(
         {
             "ok": True,
             "by_status": {r["status"]: r["n"] for r in rows},
-            "needs_human": Task.objects.filter(needs_human=True).count(),
-            "total_tokens": sum(Task.objects.values_list("tokens_used", flat=True)),
+            "needs_human": visible.filter(needs_human=True).count(),
+            "total_tokens": sum(visible.values_list("tokens_used", flat=True)),
             "server_time": timezone.now().isoformat(),
-        }
+        },
     )
 
 
@@ -251,6 +257,7 @@ def claim_task(request):
 
     from django.conf import settings
 
+
     data = _body(request)
     # Worker identity comes from the key, never from the request body. Lease
     # ownership is enforced by comparing claimed_by against this string, so a
@@ -261,6 +268,7 @@ def claim_task(request):
         worker=worker,
         lease_seconds=int(data.get("lease_seconds") or settings.TASK_LEASE_SECONDS),
         allowed_kinds=data.get("kinds"),
+        project_ids=permissions.visible_project_ids(key.user),
     )
     if task is None:
         # Not an error: an empty queue is a normal outcome for a worker, and it
@@ -277,8 +285,9 @@ def task_heartbeat(request, task_id):
         return err
     if not key.can_write:
         return _forbidden("this key is read-only")
+
     try:
-        task = Task.objects.get(pk=task_id)
+        task = permissions.tasks_visible_to(key.user).get(pk=task_id)
     except Task.DoesNotExist:
         return JsonResponse({"error": "not_found"}, status=404)
     if task.claimed_by != f"api:{key.prefix}":
@@ -305,7 +314,7 @@ def submit_review(request, task_id):
         return _forbidden("this key is read-only")
     data = _body(request)
     try:
-        task = Task.objects.get(pk=task_id)
+        task = permissions.tasks_visible_to(key.user).get(pk=task_id)
     except Task.DoesNotExist:
         return JsonResponse({"error": "not_found"}, status=404)
     if task.claimed_by != f"api:{key.prefix}":
@@ -339,8 +348,9 @@ def release_task(request, task_id):
         return err
     if not key.can_write:
         return _forbidden("this key is read-only")
+
     try:
-        task = Task.objects.get(pk=task_id)
+        task = permissions.tasks_visible_to(key.user).get(pk=task_id)
     except Task.DoesNotExist:
         return JsonResponse({"error": "not_found"}, status=404)
     if task.claimed_by != f"api:{key.prefix}":
@@ -374,8 +384,9 @@ def escalate(request, task_id):
     reason = (data.get("reason") or "").strip()
     if not reason:
         return _bad_request("a reason is required to escalate")
+
     try:
-        task = Task.objects.get(pk=task_id)
+        task = permissions.tasks_visible_to(key.user).get(pk=task_id)
     except Task.DoesNotExist:
         return JsonResponse({"error": "not_found"}, status=404)
     try:
