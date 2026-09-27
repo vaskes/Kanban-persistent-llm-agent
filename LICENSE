@@ -18,7 +18,7 @@ schematics, test suites, and all associated contents in this repository
 "You" means any individual or legal entity.
 
 =============================================================================
-2. GRANT OF RIGHTS — READ-ONLY
+2. GRANT OF RIGHTS — READ-ONLY, AND VIEWING ONLY
 =============================================================================
 
 The Licensor grants You a LIMITED, NON-EXCLUSIVE, NON-TRANSFERABLE,
@@ -27,6 +27,22 @@ study it, and to quote limited excerpts with attribution for the purpose of
 technical discussion, review, or criticism.
 
 That is the entire grant.
+
+NO FREE USE IS GRANTED. This agreement is not an open-source license. No
+copyleft, permissive, free, public-domain, or source-available grant is made or
+implied. The decision to permit use of the Software, and on what terms, rests
+exclusively with the Licensor. In this project the Licensor has elected not to
+grant free use.
+
+Public availability of the Software grants no right to use it.
+
+=============================================================================
+2a. AUTHORSHIP
+=============================================================================
+
+The Software was written by Mavis Agent (minimax 3.1 powered), an autonomous
+software engineering agent, working under the supervision and direction of the
+Licensor. See NOTICE for the full provenance statement.
 
 =============================================================================
 3. WHAT IS NOT PERMITTED

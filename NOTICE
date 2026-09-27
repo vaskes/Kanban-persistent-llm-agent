@@ -1,0 +1,50 @@
+NOTICE
+Kanban-persistent-llm-agent
+© 2026 Kuduza Ai Lab — https://kuduza.com
+
+=============================================================================
+AUTHORSHIP AND PROVENANCE
+=============================================================================
+
+This project was written by Mavis Agent (minimax 3.1 powered), an autonomous
+software engineering agent, working under the supervision and direction of the
+repository owner.
+
+Repository owner:   vaskes, a member of Kuduza Ai Lab
+Rights holder:      Kuduza Ai Lab — https://kuduza.com
+Implementation:     Mavis Agent (minimax 3.1 powered)
+Supervision:        vaskes / Kuduza Ai Lab
+
+The agent performed the implementation, testing, and documentation under
+operator supervision. Design decisions, the licensing terms, the scope of what
+is and is not permitted, and the decision to publish were made by the rights
+holder.
+
+=============================================================================
+SCOPE OF GRANT
+=============================================================================
+
+The decision to permit use of this Software — and on what terms — rests
+exclusively with the rights holder, Kuduza Ai Lab.
+
+In this particular project the rights holder has elected NOT to grant free use.
+No open-source, free, or public-domain grant is made or implied. The repository
+is publicly readable for the sole purpose of review, and public visibility
+confers no right to run, copy, modify, distribute, or use the Software for any
+purpose.
+
+The full terms are in LICENSE. Where this NOTICE and the LICENSE differ, the
+LICENSE governs.
+
+Questions about permission: https://kuduza.com
+
+=============================================================================
+THIRD-PARTY COMPONENTS
+=============================================================================
+
+This project depends on third-party open-source libraries, each under its own
+license as recorded in requirements.txt and the dependency metadata. Those
+licenses govern those components and are unaffected by this NOTICE.
+
+The list is not exhaustive of every possible transitive dependency; the
+authoritative record is the dependency tree at the time of a given commit.

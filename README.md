@@ -2,8 +2,8 @@
 
 A persistent, self-running LLM agent whose task board *is* its state machine.
 
-> **Proprietary. Publicly readable, not open source.**
-> © 2026 Kuduza Ai Lab — <https://kuduza.com>. See [LICENSE](LICENSE).
+> **Proprietary. Publicly readable, not open source. No free use granted.**
+> © 2026 Kuduza Ai Lab — <https://kuduza.com>. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 > Public visibility grants viewing only — no running, copying, modifying,
 > commercial use, non-commercial use, or use as ML training data. Ask first.
 
@@ -14,6 +14,19 @@ A persistent, self-running LLM agent whose task board *is* its state machine.
 | Tests | 127, **100% statement + branch coverage** |
 | Board | Postgres 16 + pgvector 0.8.6 |
 | LLM | local llama.cpp / vLLM / MiniMax / Qwen behind one interface |
+
+## Authorship
+
+Written by **Mavis Agent** (minimax 3.1 powered), working under the supervision
+and direction of the repository owner **vaskes**, a member of **Kuduza Ai Lab**
+(<https://kuduza.com>). The agent performed the implementation, testing and
+documentation; the rights holder made the design decisions, set the licensing
+terms, and decided what gets published.
+
+Whether to permit use of this project — and on what terms — is the rights
+holder's decision alone. **In this project they have elected not to grant free
+use.** No open-source, free, or public-domain grant is made or implied. Details
+in [NOTICE](NOTICE).
 
 The board is the state store, not a UI over some other storage. Every state
 change goes through one function, `board.state.transition()`, and every guard
