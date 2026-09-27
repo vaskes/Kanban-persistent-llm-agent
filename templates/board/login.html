@@ -1,43 +1,78 @@
-<!doctype html><html><head><meta charset="utf-8">
+{% comment %}
+Login form.
+
+Note: the fields are written out explicitly rather than rendered with
+{{ form.username }} / {{ form.password }}. Rendering a bound field emits its own
+input *and* its own label, which produced a second, unlabelled username box
+above the real one and made it ambiguous which value was submitted.
+
+The form is rendered manually so the markup is predictable; the CSRF token and
+the "next" redirect are still taken from the form object.
+{% endcomment %}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>kanban-agent — вход</title>
+<title>Sign in — kanban-agent</title>
 <style>
- body{font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;background:#111214;color:#e8e8ea;
-      margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh}
- .card{width:100%;max-width:380px;background:#1a1b1e;border:1px solid #2b2d33;border-radius:10px;padding:28px}
- h1{margin:0 0 4px;font-size:20px;font-weight:600;letter-spacing:.2px}
- .sub{color:#8b8d94;font-size:13px;margin:0 0 22px}
- label{display:block;font-size:13px;color:#b9bbc2;margin:14px 0 6px}
- input[type=text],input[type=password]{width:100%;box-sizing:border-box;padding:10px 12px;font-size:15px;
-      background:#101114;border:1px solid #34363d;border-radius:6px;color:#e8e8ea;outline:none}
- input:focus{border-color:#3f7fd0;box-shadow:0 0 0 2px rgba(63,127,208,.22)}
- button{width:100%;margin-top:22px;padding:11px;font-size:15px;font-weight:500;cursor:pointer;
-        background:#3f7fd0;border:0;border-radius:6px;color:#fff}
+ :root{color-scheme:dark}
+ body{font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+      background:#0e0f11;color:#e8e8ea;margin:0;display:flex;align-items:center;
+      justify-content:center;min-height:100vh;padding:24px}
+ .card{width:100%;max-width:400px;background:#17181c;border:1px solid #26272d;
+       border-radius:12px;padding:32px}
+ h1{margin:0 0 4px;font-size:20px;font-weight:600;letter-spacing:-.2px}
+ .sub{color:#8b8d94;font-size:13.5px;margin:0 0 24px}
+ label{display:block;font-size:12.5px;font-weight:500;color:#a9abb2;margin:16px 0 6px;
+       letter-spacing:.2px}
+ input[type=text],input[type=password]{width:100%;box-sizing:border-box;padding:11px 12px;
+       font-size:15px;background:#0e0f11;border:1px solid #303139;border-radius:7px;
+       color:#e8e8ea;outline:none;transition:border-color .12s,box-shadow .12s}
+ input:focus{border-color:#4a8ade;box-shadow:0 0 0 3px rgba(74,138,222,.20)}
+ input:-webkit-autofill{-webkit-text-fill-color:#e8e8ea;-webkit-box-shadow:0 0 0 1000px #0e0f11 inset}
+ button{width:100%;margin-top:24px;padding:11px;font-size:15px;font-weight:500;cursor:pointer;
+        background:#3b82d8;border:0;border-radius:7px;color:#fff}
  button:hover{background:#4a8ade}
- .err{background:#3a1d1f;border:1px solid #6b3034;color:#f3b0b3;padding:10px 12px;
-      border-radius:6px;margin-bottom:16px;font-size:14px}
- .next{color:#7c8899;font-size:12px;margin-top:18px;line-height:1.5}
- a{color:#6ba3e8}
-</style></head><body>
+ .err{background:#2b1518;border:1px solid #6b3034;color:#f2a9ac;padding:11px 13px;
+      border-radius:7px;margin-bottom:18px;font-size:14px}
+ .note{color:#7c7f88;font-size:12.5px;margin:22px 0 0;line-height:1.6;
+       border-top:1px solid #24252b;padding-top:16px}
+ .note b{color:#a9abb2;font-weight:500}
+ code{background:#22242a;padding:1px 5px;border-radius:4px;font-size:12px;
+      font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+</style>
+</head>
+<body>
 <div class="card">
   <h1>kanban-agent</h1>
-  <p class="sub">доска задач персистентного агента</p>
+  <p class="sub">Sign in to the task board</p>
+
   {% if form.errors %}
-    <div class="err">Неверный логин или пароль.</div>
+    <div class="err">Incorrect username or password.</div>
   {% endif %}
+
   <form method="post" action="{% url 'login' %}">
     {% csrf_token %}
-    {{ form.username }}
-    <label for="id_username">Логин</label>
-    <input type="text" name="username" id="id_username" autofocus autocomplete="username" required>
-    <label for="id_password">Пароль</label>
-    <input type="password" name="password" id="id_password" autocomplete="current-password" required>
+
+    <label for="id_username">Username</label>
+    <input type="text" name="username" id="id_username" autocomplete="username"
+           autocapitalize="none" spellcheck="false" required autofocus
+           value="{{ form.username.value|default_if_none:'' }}">
+
+    <label for="id_password">Password</label>
+    <input type="password" name="password" id="id_password"
+           autocomplete="current-password" required>
+
     {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-    <button type="submit">Войти</button>
+    <button type="submit">Sign in</button>
   </form>
-  <p class="next">
-    Регистрации нет — учётные записи создаёт оператор на хосте.
-    Сессия живёт 14 дней, повторно входить не нужно.
+
+  <p class="note">
+    <b>There is no sign-up.</b> Accounts are created by the operator on the
+    server, so ask for credentials if you do not have a pair.<br><br>
+    You stay signed in for 14 days. After that you will be asked again.
   </p>
 </div>
-</body></html>
+</body>
+</html>

@@ -143,3 +143,62 @@ def test_there_is_no_registration_path(client):
     """No signup, no password reset — accounts are operator-created only."""
     for path in ("/register/", "/signup/", "/accounts/signup/", "/password_reset/"):
         assert client.get(path).status_code == 404, path
+
+
+# --------------------------------------------------------------------------
+# login form markup
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_login_page_has_exactly_one_username_input(client):
+    """
+    Regression guard.
+
+    The template once contained {{ form.username }}, which renders a bound
+    field *with its own input and label*. On top of the hand-written field that
+    meant two username boxes, and which one reached the server was ambiguous —
+    a silently broken login rather than a visible error.
+    """
+    import re
+
+    body = client.get("/login/").content.decode()
+    assert len(re.findall(r'name="username"', body)) == 1
+    assert len(re.findall(r'name="password"', body)) == 1
+
+
+@pytest.mark.django_db
+def test_login_page_renders_fields_directly(client):
+    """No stray bound-field rendering alongside the hand-written inputs."""
+    body = client.get("/login/").content.decode()
+    assert "form.username" not in body
+    assert "form.password" not in body
+    assert '<label for="id_username">Username</label>' in body
+
+
+@pytest.mark.django_db
+def test_login_page_is_in_english(client):
+    body = client.get("/login/").content.decode()
+    for phrase in ("Sign in", "Username", "Password", "There is no sign-up"):
+        assert phrase in body, f"missing {phrase!r}"
+    # no Cyrillic anywhere in the user-facing chrome
+    assert not any("Ѐ" <= ch <= "ӿ" for ch in body)
+
+
+@pytest.mark.django_db
+def test_failed_login_keeps_the_typed_username(client, django_user_model):
+    """
+    A wrong password should not make the user retype their username as well.
+    """
+    django_user_model.objects.create_user("vaskes", password="pw12345")
+    r = client.post("/login/", {"username": "vaskes", "password": "wrong"})
+    body = r.content.decode()
+    assert "Incorrect username or password." in body
+    assert 'value="vaskes"' in body
+    assert 'name="password" type="password"' not in body or 'value=""' not in body
+
+
+@pytest.mark.django_db
+def test_csrf_token_present_on_login_form(client):
+    body = client.get("/login/").content.decode()
+    assert "csrfmiddlewaretoken" in body

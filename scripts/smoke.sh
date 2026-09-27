@@ -8,13 +8,18 @@
 #   USERNAME=vaskes PASSWORD=... bash scripts/smoke.sh
 set -euo pipefail
 
+# Resolve paths relative to the repository, not the caller's working directory.
+# Reading .env from $PWD meant the script silently fell back to loopback and
+# reported 000 (which reads as an outage) when run from anywhere else.
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 BASE="${BASE:-}"
 if [ -z "$BASE" ]; then
   # Take the address the service is actually bound to. Guessing 127.0.0.1 fails
   # once BIND_ADDR is set to a LAN address, and the failure looks like an
   # outage rather than a wrong address.
-  if [ -f .env ]; then
-    BIND=$(grep -E '^BIND_ADDR=' .env | tail -1 | cut -d= -f2- | tr -d '"'"'"'')
+  if [ -f "$HERE/.env" ]; then
+    BIND=$(grep -E '^BIND_ADDR=' "$HERE/.env" | tail -1 | cut -d= -f2- | tr -d '"'"'"'')
   fi
   BASE="http://${BIND:-127.0.0.1:8901}"
 fi
