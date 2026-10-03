@@ -24,6 +24,7 @@ showing both would invite inconsistency.
 
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.shortcuts import redirect
 from django.template.response import TemplateResponse
 from django.urls import path, reverse
 from django.utils.html import format_html
@@ -230,19 +231,78 @@ RESOURCE_KINDS = [
 ]
 
 
+# Resource kind value -> concrete model class. Used by ResourceAdmin to redirect
+# change/delete to the subtype admin that owns the structured fields (Hostname,
+# IP, ssh_key_cipher, etc.). The base Resource change form would render only
+# parent columns and an operator would have no way to edit those properties.
+_KIND_TO_MODEL = {kind: model for kind, _label, model, _help in RESOURCE_KINDS}
+
+
 @admin.register(Resource)
 class ResourceAdmin(admin.ModelAdmin):
     list_display = [
         "name", "kind", "lifetime", "capacity",
-        "free_slots", "archived", "updated_at",
+        "free_slots", "archived", "updated_at", "configure_url",
     ]
     list_filter = ["kind", "lifetime", "archived"]
     search_fields = ["name", "description"]
-    readonly_fields = ["created_at", "updated_at"]
+    readonly_fields = ["created_at", "updated_at", "kind"]
 
     @admin.display(description="free")
     def free_slots(self, obj):
         return f"{obj.free_slots}/{obj.capacity}"
+
+    @admin.display(description="Edit")
+    def configure_url(self, obj):
+        """
+        Link to the matching subtype admin's change page. The base
+        Resource admin has no structured fields; every per-kind column
+        (hostname, IP, ssh_key_cipher, …) lives on the subtype's admin.
+        """
+        model_cls = _KIND_TO_MODEL.get(obj.kind)
+        if model_cls is None:
+            return ""
+        url = reverse(
+            f"admin:{model_cls._meta.app_label}_{model_cls._meta.model_name}_change",
+            args=[obj.pk],
+        )
+        return format_html('<a href="{}">configure →</a>', url)
+
+    def _redirect_to_subtype(self, request, object_id, view_name, extra_context):
+        """
+        Common redirect helper: route /admin/board/resource/<id>/<view>/ to the
+        matching /admin/board/<kind>/<id>/<view>/. Returns None if the object
+        does not exist (let super() render the 404).
+        """
+        obj = self.get_object(request, object_id)
+        if obj is None:
+            return None
+        model_cls = _KIND_TO_MODEL.get(obj.kind)
+        if model_cls is None:
+            return None
+        url = reverse(
+            f"admin:{model_cls._meta.app_label}_{model_cls._meta.model_name}_{view_name}",
+            args=[obj.pk],
+        )
+        return redirect(url)
+
+    def change_view(self, request, object_id, form_url="", extra_context=None):
+        result = self._redirect_to_subtype(request, object_id, "change", extra_context)
+        if result is not None:
+            return result
+        return super().change_view(request, object_id, form_url, extra_context)
+
+    def delete_view(self, request, object_id, extra_context=None):
+        result = self._redirect_to_subtype(request, object_id, "delete", extra_context)
+        if result is not None:
+            return result
+        return super().delete_view(request, object_id, extra_context)
+
+    def history_view(self, request, object_id, extra_context=None):
+        result = self._redirect_to_subtype(request, object_id, "history", extra_context)
+        if result is not None:
+            return result
+        return super().history_view(request, object_id, extra_context)
 
     def has_add_permission(self, request):
         """
@@ -306,6 +366,17 @@ class HostAdmin(admin.ModelAdmin):
     ]
     list_filter = ["os_type", "proto", "archived"]
     search_fields = ["name", "hostname", "ip", "description"]
+    fieldsets = (
+        (None, {"fields": ("name", "description", "archived")}),
+        ("Identity", {
+            "fields": ("os_type", "hostname", "ip", "proto", "port"),
+        }),
+        ("Credentials", {
+            "fields": ("ssh_key_cipher", "login", "password_cipher"),
+            "description": "Stored encrypted via board.crypto. Plaintext is "
+                           "never written to disk and never logged.",
+        }),
+    )
 
 
 @_hide_from_sidebar
@@ -316,6 +387,21 @@ class SandboxAdmin(admin.ModelAdmin):
     ]
     list_filter = ["os_type", "archived"]
     search_fields = ["name", "image"]
+    fieldsets = (
+        (None, {
+            "fields": ("name", "description", "archived", "lifetime", "capacity", "pool_size"),
+        }),
+        ("Container image", {
+            "fields": ("os_type", "image", "cpu_limit", "memory_limit_mb"),
+        }),
+        ("Network identity", {
+            "fields": ("hostname", "ip", "proto", "port"),
+        }),
+        ("Credentials", {
+            "fields": ("ssh_key_cipher", "login", "password_cipher"),
+            "description": "Stored encrypted via board.crypto.",
+        }),
+    )
 
 
 @_hide_from_sidebar
@@ -324,6 +410,10 @@ class ComfyUiEndpointAdmin(admin.ModelAdmin):
     list_display = ["name", "url", "archived"]
     list_filter = ["archived"]
     search_fields = ["name", "url"]
+    fieldsets = (
+        (None, {"fields": ("name", "description", "archived", "lifetime", "capacity")}),
+        ("Endpoint", {"fields": ("url", "workflow_timeout_seconds", "api_key_cipher")}),
+    )
 
 
 @_hide_from_sidebar
@@ -332,6 +422,11 @@ class GitRepoAdmin(admin.ModelAdmin):
     list_display = ["name", "url", "default_branch", "archived"]
     list_filter = ["archived"]
     search_fields = ["name", "url"]
+    fieldsets = (
+        (None, {"fields": ("name", "description", "archived", "lifetime", "capacity")}),
+        ("Repository", {"fields": ("url", "default_branch")}),
+        ("Authentication", {"fields": ("ssh_key_cipher",)}),
+    )
 
 
 @_hide_from_sidebar
@@ -340,6 +435,12 @@ class BrowserAdmin(admin.ModelAdmin):
     list_display = ["name", "image", "headless", "pool_size", "archived"]
     list_filter = ["headless", "archived"]
     search_fields = ["name", "image"]
+    fieldsets = (
+        (None, {
+            "fields": ("name", "description", "archived", "lifetime", "capacity", "pool_size"),
+        }),
+        ("Runtime", {"fields": ("image", "headless")}),
+    )
 
 
 @_hide_from_sidebar
@@ -353,6 +454,10 @@ class LlmEndpointAdmin(admin.ModelAdmin):
     list_display = ["name", "base_url", "model_id", "archived"]
     list_filter = ["archived"]
     search_fields = ["name", "base_url", "model_id"]
+    fieldsets = (
+        (None, {"fields": ("name", "description", "archived", "lifetime", "capacity")}),
+        ("Endpoint", {"fields": ("base_url", "model_id", "max_tokens", "api_key_cipher")}),
+    )
 
 
 @_hide_from_sidebar
@@ -367,6 +472,18 @@ class McpServerAdmin(admin.ModelAdmin):
     list_display = ["name", "transport", "url", "protocol_version", "archived"]
     list_filter = ["transport", "archived"]
     search_fields = ["name", "url"]
+    fieldsets = (
+        (None, {"fields": ("name", "description", "archived", "lifetime", "capacity")}),
+        ("Endpoint", {
+            "fields": ("url", "transport", "protocol_version", "api_key_cipher"),
+        }),
+        ("Tools", {
+            "fields": ("declared_tools",),
+            "description": "Operator-documented tools list. Runtime will "
+                           "replace this with live discovery when MCP "
+                           "client is wired up.",
+        }),
+    )
 
 
 # Resource allocations live on the WebUI board (operator sees "Ornith has 2

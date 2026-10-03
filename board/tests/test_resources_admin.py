@@ -300,3 +300,166 @@ def test_llm_endpoint_appears_in_resources_changelist_kind_column(admin_client):
     body = r.content.decode()
     assert "advisor" in body
     assert "llm_endpoint" in body
+
+
+# --- Resource admin redirects to subtype admin ----------------------------
+#
+# The base Resource change form has no per-kind columns (hostname, IP,
+# ssh_key_cipher, …). Clicking a row in /admin/board/resource/ must therefore
+# bounce the operator to the matching subtype admin that owns those fields.
+
+
+def test_resource_change_view_redirects_host_to_host_admin(staff_client):
+    h = Host.objects.create(name="h", ip="10.0.0.5")
+    r = staff_client.get(
+        reverse("admin:board_resource_change", args=[h.pk]),
+    )
+    assert r.status_code == 302
+    assert r.url == reverse("admin:board_host_change", args=[h.pk])
+
+
+def test_resource_change_view_redirects_sandbox_to_sandbox_admin(staff_client):
+    s = Sandbox.objects.create(name="s", image="ubuntu:22.04", pool_size=1)
+    r = staff_client.get(
+        reverse("admin:board_resource_change", args=[s.pk]),
+    )
+    assert r.status_code == 302
+    assert r.url == reverse("admin:board_sandbox_change", args=[s.pk])
+
+
+def test_resource_change_view_redirects_comfyui_to_comfyui_admin(staff_client):
+    c = ComfyUiEndpoint.objects.create(name="cf", url="http://x:8188")
+    r = staff_client.get(
+        reverse("admin:board_resource_change", args=[c.pk]),
+    )
+    assert r.status_code == 302
+    assert r.url == reverse("admin:board_comfyuiendpoint_change", args=[c.pk])
+
+
+def test_resource_change_view_redirects_gitrepo_to_gitrepo_admin(staff_client):
+    g = GitRepo.objects.create(name="gr", url="git@github.com:foo/bar.git")
+    r = staff_client.get(
+        reverse("admin:board_resource_change", args=[g.pk]),
+    )
+    assert r.status_code == 302
+    assert r.url == reverse("admin:board_gitrepo_change", args=[g.pk])
+
+
+def test_resource_change_view_redirects_browser_to_browser_admin(staff_client):
+    b = Browser.objects.create(name="br", pool_size=1)
+    r = staff_client.get(
+        reverse("admin:board_resource_change", args=[b.pk]),
+    )
+    assert r.status_code == 302
+    assert r.url == reverse("admin:board_browser_change", args=[b.pk])
+
+
+def test_resource_change_view_redirects_llmendpoint_to_llmendpoint_admin(staff_client):
+    from board.models import LlmEndpoint
+    LlmEndpoint.objects.create(name="llm", base_url="http://x/v1", model_id="m")
+    obj = Resource.objects.get(name="llm")
+    r = staff_client.get(
+        reverse("admin:board_resource_change", args=[obj.pk]),
+    )
+    assert r.status_code == 302
+    assert r.url == reverse("admin:board_llmendpoint_change", args=[obj.pk])
+
+
+def test_resource_change_view_redirects_mcpserver_to_mcpserver_admin(staff_client):
+    from board.models import McpServer
+    McpServer.objects.create(name="mcp", url="http://m.local/mcp", transport="http")
+    obj = Resource.objects.get(name="mcp")
+    r = staff_client.get(
+        reverse("admin:board_resource_change", args=[obj.pk]),
+    )
+    assert r.status_code == 302
+    assert r.url == reverse("admin:board_mcpserver_change", args=[obj.pk])
+
+
+def test_resource_delete_view_redirects_to_subtype(staff_client):
+    h = Host.objects.create(name="h")
+    r = staff_client.get(
+        reverse("admin:board_resource_delete", args=[h.pk]),
+    )
+    assert r.status_code == 302
+    assert r.url == reverse("admin:board_host_delete", args=[h.pk])
+
+
+def test_resource_history_view_redirects_to_subtype(staff_client):
+    h = Host.objects.create(name="h")
+    r = staff_client.get(
+        reverse("admin:board_resource_history", args=[h.pk]),
+    )
+    assert r.status_code == 302
+    assert r.url == reverse("admin:board_host_history", args=[h.pk])
+
+
+def test_resource_changelist_renders_configure_link_per_kind(staff_client):
+    """Each row in /admin/board/resource/ now has a 'configure' link that
+    points to the matching subtype admin's change page."""
+    Host.objects.create(name="h-link", ip="1.2.3.4")
+    Sandbox.objects.create(name="s-link", image="alpine:3", pool_size=1)
+    r = staff_client.get(reverse("admin:board_resource_changelist"))
+    body = r.content.decode()
+    assert "configure" in body
+    # at least one link to the host admin's change page
+    h = Host.objects.get(name="h-link")
+    assert reverse("admin:board_host_change", args=[h.pk]) in body
+
+
+def test_resource_admin_list_display_includes_configure_url():
+    """`configure_url` is a public column on ResourceAdmin so the operator
+    sees a direct edit link in the unified list."""
+    assert "configure_url" in ResourceAdmin.list_display
+
+
+# --- Subtype admins expose structured fields via fieldsets -----------------
+
+
+def _fieldset_field_names(admin_cls):
+    """Flatten a ModelAdmin's fieldsets into a single field-name list."""
+    names = []
+    for _title, opts in admin_cls.fieldsets or []:
+        names.extend(opts.get("fields", ()))
+    return names
+
+
+def test_host_admin_fieldsets_include_connection_and_credentials():
+    fields = _fieldset_field_names(HostAdmin)
+    # Identity
+    for f in ("os_type", "hostname", "ip", "proto", "port"):
+        assert f in fields, f"Host fieldset missing {f}"
+    # Credentials (encrypted)
+    for f in ("ssh_key_cipher", "login", "password_cipher"):
+        assert f in fields, f"Host fieldset missing {f}"
+
+
+def test_sandbox_admin_fieldsets_include_pool_and_container_fields():
+    fields = _fieldset_field_names(SandboxAdmin)
+    for f in ("pool_size", "image", "cpu_limit", "memory_limit_mb"):
+        assert f in fields, f"Sandbox fieldset missing {f}"
+
+
+def test_browser_admin_fieldsets_include_image_and_headless():
+    fields = _fieldset_field_names(BrowserAdmin)
+    assert {"image", "headless", "pool_size"} <= set(fields)
+
+
+def test_gitrepo_admin_fieldsets_include_url_and_ssh_key():
+    fields = _fieldset_field_names(GitRepoAdmin)
+    assert {"url", "default_branch", "ssh_key_cipher"} <= set(fields)
+
+
+def test_comfyui_admin_fieldsets_include_url_and_api_key():
+    fields = _fieldset_field_names(ComfyUiEndpointAdmin)
+    assert {"url", "api_key_cipher", "workflow_timeout_seconds"} <= set(fields)
+
+
+def test_resource_change_view_for_missing_id_falls_through(staff_client):
+    """If the object does not exist, super().change_view renders a 404.
+    The redirect helper must not crash with AttributeError on None."""
+    import uuid
+    r = staff_client.get(
+        reverse("admin:board_resource_change", args=[uuid.uuid4()]),
+    )
+    assert r.status_code in (302, 404)
